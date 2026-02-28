@@ -8,18 +8,35 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Dimensions // <-- Added missing Dimensions import
+  Dimensions,
+  Alert,
+  Image
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import * as ImagePicker from 'expo-image-picker';
 
-// <-- Defined the width variable for the Resume template cards
 const { width } = Dimensions.get("window"); 
 
 export default function StudentProfileScreen() {
   const router = useRouter();
-  
+  const params = useLocalSearchParams();
+
+  // --- DYNAMIC DATA FROM LOGIN/DASHBOARD ---
+  const firstName = (params.first_name as string) || "Student";
+  const lastName = (params.last_name as string) || "";
+  const email = (params.email as string) || "student@school.lk";
+  const gradeLevel = (params.grade as string) || "11";
+  const attendance = (params.attendance as string) || "85%";
+  const studentId = (params.studentId as string) || "STU-90214";
+
+  // Logic for Avatar Initials
+  const avatarInitials = (firstName[0] + (lastName[0] || "")).toUpperCase();
+
+  // Profile Photo State
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+
   // Navigation & Tab States
   const [activeTab, setActiveTab] = useState("About");
   const tabs = ["About", "Resume"];
@@ -46,23 +63,104 @@ export default function StudentProfileScreen() {
     { subject: "ICT", grade: "A" },
   ];
 
-  // Mock Resume Templates
-  const templates = [
-    { id: "1", name: "Modern Student", color: "#3B82F6" },
-    { id: "2", name: "Minimalist", color: "#64748B" },
-    { id: "3", name: "Creative IT", color: "#8B5CF6" },
-  ];
-
   const handleLogout = () => {
-    router.replace("/selection");
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Log Out", style: "destructive", onPress: () => router.replace("/selection") }
+    ]);
   };
 
-  const handleSave = () => {
-    console.log("Saving profile updates...");
-    setIsEditing(false);
+  // --- SAVE & UPLOAD LOGIC ---
+  const handleSave = async () => {
+    // 1. If no new photo was selected (or it's already a web URL), just save text data
+    if (!profilePhoto || profilePhoto.startsWith('http')) {
+      setIsEditing(false);
+      Alert.alert("Success", "Profile updated successfully!");
+      return;
+    }
+
+    // 2. Prepare the image file for upload
+    const formData = new FormData();
+    
+    // We append the photo. React Native requires this specific format for files
+    formData.append('photo', {
+      uri: Platform.OS === 'android' ? profilePhoto : profilePhoto.replace('file://', ''),
+      name: `${studentId}_avatar.jpg`,
+      type: 'image/jpeg',
+    } as any);
+
+    // Append other data you want to update
+    formData.append('studentId', studentId);
+
+    try {
+      // 3. Send to your Node.js backend
+      const response = await fetch("http://172.20.10.7:5000/api/profile/upload-avatar", {
+        method: "POST",
+        body: formData, // Sending FormData instead of JSON
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setIsEditing(false);
+        Alert.alert("Success", "Profile photo updated permanently!");
+        // Update the local state so the UI shows the new permanent URL immediately
+        setProfilePhoto(data.photoUrl); 
+      } else {
+        Alert.alert("Upload Failed", data.error || "Failed to upload image.");
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      Alert.alert("Network Error", "Could not connect to the server.");
+    }
   };
 
-  // Helper for consistent info rows
+  // --- IMAGE PICKER LOGIC ---
+  const handlePickImage = () => {
+    Alert.alert(
+      "Profile Photo",
+      "Choose an option",
+      [
+        { text: "Camera", onPress: openCamera },
+        { text: "Gallery", onPress: openGallery },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+  };
+
+  const openCamera = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (permissionResult.granted === false) {
+      Alert.alert("Permission to access camera is required!");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+    if (!result.canceled) {
+      setProfilePhoto(result.assets[0].uri);
+    }
+  };
+
+  const openGallery = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permissionResult.granted === false) {
+      Alert.alert("Permission to access gallery is required!");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, 
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+    if (!result.canceled) {
+      setProfilePhoto(result.assets[0].uri);
+    }
+  };
+
   const InfoRow = ({ label, value }: { label: string, value: string }) => (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
@@ -101,23 +199,23 @@ export default function StudentProfileScreen() {
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           
-          {/* MAIN PROFILE HEADER (Hidden when editing or on other tabs) */}
+          {/* MAIN PROFILE HEADER */}
           {activeTab === "About" && !isEditing && (
             <View style={styles.profileHeader}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>KW</Text>
+                {/* Display Image if selected, else Initials */}
+                {profilePhoto ? (
+                  <Image source={{ uri: profilePhoto }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>{avatarInitials}</Text>
+                )}
               </View>
               <View style={styles.profileInfo}>
-                <Text style={styles.name}>Kasun Wickramasinghe</Text>
+                <Text style={styles.name}>{firstName} {lastName}</Text>
                 
                 <View style={[styles.statsRow, { marginTop: 12 }]}>
                   <View style={styles.statBox}>
-                    <Text style={styles.statValue}>3.6</Text>
-                    <Text style={styles.statLabel}>GPA</Text>
-                  </View>
-                  <View style={styles.statDivider} />
-                  <View style={styles.statBox}>
-                    <Text style={styles.statValue}>92%</Text>
+                    <Text style={styles.statValue}>{attendance}</Text>
                     <Text style={styles.statLabel}>Attendance</Text>
                   </View>
                 </View>
@@ -143,20 +241,21 @@ export default function StudentProfileScreen() {
             ))}
           </View>
 
-          {/* ========================================== */}
-          {/* TAB CONTENT: ABOUT (VIEW MODE)             */}
-          {/* ========================================== */}
+          {/* TAB CONTENT: ABOUT (VIEW MODE) */}
           {activeTab === "About" && !isEditing && (
             <View style={styles.tabContent}>
               
               {/* Academic Details */}
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Academic Information</Text>
-                <InfoRow label="Student ID" value="STU-90214" />
-                <InfoRow label="Full Name" value="Kasun Wickramasinghe" />
-                <InfoRow label="Email Address" value="kasun.w@school.lk" />
-                <InfoRow label="Grade" value="12" />
-                <InfoRow label="Stream/Section" value="Physical Science" />
+                <InfoRow label="Student ID" value={studentId} />
+                <InfoRow label="First Name" value={firstName} />
+                <InfoRow label="Last Name" value={lastName} />
+                <InfoRow label="Email Address" value={email} />
+                <InfoRow label="Grade" value={gradeLevel} />
+                {(gradeLevel === "12" || gradeLevel === "13") && (
+                   <InfoRow label="Stream/Section" value="Physical Science" />
+                )}
               </View>
 
               {/* Personal Details */}
@@ -179,8 +278,6 @@ export default function StudentProfileScreen() {
               {/* Guardian Details */}
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Guardian Information</Text>
-                
-                {/* Father */}
                 <View style={styles.guardianRow}>
                   <Text style={styles.guardianLabel}>Father</Text>
                   <Text style={styles.guardianValue}>Mr. Nimal Wickramasinghe</Text>
@@ -193,10 +290,7 @@ export default function StudentProfileScreen() {
                   <Text style={styles.guardianLabel}>Email</Text>
                   <Text style={styles.guardianValue}>nimal.w@email.com</Text>
                 </View>
-                
                 <View style={styles.cardDivider} />
-
-                {/* Mother */}
                 <View style={styles.guardianRow}>
                   <Text style={styles.guardianLabel}>Mother</Text>
                   <Text style={styles.guardianValue}>Mrs. Shirani Wickramasinghe</Text>
@@ -219,10 +313,8 @@ export default function StudentProfileScreen() {
                   <InfoRow label="Year" value="2021" />
                   <InfoRow label="Status" value="Passed" />
                   <InfoRow label="Scheme" value="Local Syllabus" />
-                  
                   <View style={styles.cardDivider} />
                   <Text style={[styles.infoLabel, { marginBottom: 12 }]}>Subjects & Results</Text>
-                  
                   <View style={styles.resultsGrid}>
                     {olResults.map((item, index) => (
                       <View key={index} style={styles.resultItem}>
@@ -243,24 +335,26 @@ export default function StudentProfileScreen() {
             </View>
           )}
 
-          {/* ========================================== */}
-          {/* TAB CONTENT: ABOUT (EDIT MODE)             */}
-          {/* ========================================== */}
+          {/* TAB CONTENT: ABOUT (EDIT MODE) */}
           {activeTab === "About" && isEditing && (
             <View style={styles.tabContent}>
-              
-              {/* Edit Profile Photo */}
               <View style={styles.photoEditContainer}>
-                <View style={styles.largeAvatar}>
-                  <Text style={styles.largeAvatarText}>KW</Text>
-                </View>
-                <TouchableOpacity style={styles.cameraBadge} activeOpacity={0.8}>
-                  <Feather name="camera" size={16} color="#FFFFFF" />
+                {/* Make Avatar Touchable to Pick Image */}
+                <TouchableOpacity onPress={handlePickImage} activeOpacity={0.8}>
+                  <View style={styles.largeAvatar}>
+                    {profilePhoto ? (
+                      <Image source={{ uri: profilePhoto }} style={styles.largeAvatarImage} />
+                    ) : (
+                      <Text style={styles.largeAvatarText}>{avatarInitials}</Text>
+                    )}
+                  </View>
+                  <View style={styles.cameraBadge}>
+                    <Feather name="camera" size={16} color="#FFFFFF" />
+                  </View>
                 </TouchableOpacity>
-                <Text style={styles.changePhotoText}>Change Profile Photo</Text>
+                <Text style={styles.changePhotoText} onPress={handlePickImage}>Change Profile Photo</Text>
               </View>
 
-              {/* Edit Contact Details */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Mobile Number</Text>
                 <TextInput
@@ -302,17 +396,12 @@ export default function StudentProfileScreen() {
                   To change your locked personal, academic, or guardian information, please contact the school administration directly.
                 </Text>
               </View>
-
             </View>
           )}
 
-          {/* ========================================== */}
-          {/* TAB CONTENT: RESUME (VIEW MODE)            */}
-          {/* ========================================== */}
+          {/* TAB CONTENT: RESUME VIEW */}
           {activeTab === "Resume" && !isEditing && (
             <View style={styles.tabContent}>
-              
-              {/* Action Buttons Row */}
               <View style={styles.resumeActionRow}>
                 <TouchableOpacity style={styles.resumePrimaryBtn} activeOpacity={0.8}>
                   <FontAwesome6 name="file-arrow-down" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
@@ -324,54 +413,25 @@ export default function StudentProfileScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Resume Document Preview */}
               <View style={styles.resumeDocumentCard}>
-                <Text style={styles.docHeaderName}>Kasun Wickramasinghe</Text>
-                <Text style={styles.docHeaderContact}>kasun.w@school.lk | +94 77 123 4567 | Colombo, LK</Text>
+                <Text style={styles.docHeaderName}>{firstName} {lastName}</Text>
+                <Text style={styles.docHeaderContact}>{email} | {mobile} | Colombo, LK</Text>
                 <View style={styles.docDivider} />
-
                 <Text style={styles.docSectionTitle}>OBJECTIVE</Text>
                 <Text style={styles.docText}>
-                  A highly motivated Grade 12 Physical Science student with a strong passion for software development and mathematics. Seeking an internship opportunity to apply problem-solving skills and learn in a professional environment.
+                  A highly motivated Grade {gradeLevel} student. Seeking an internship opportunity to apply problem-solving skills and learn in a professional environment.
                 </Text>
-
-                <Text style={styles.docSectionTitle}>EDUCATION</Text>
-                <Text style={styles.docSubhead}>Royal College, Colombo</Text>
-                <Text style={styles.docDateText}>2022 - Present</Text>
-                <Text style={styles.docText}>• G.C.E Advanced Level (Physical Science Stream)</Text>
-                <Text style={styles.docText}>• Current GPA: 3.6/4.0</Text>
-
-                <Text style={[styles.docSubhead, { marginTop: 8 }]}>G.C.E Ordinary Level</Text>
-                <Text style={styles.docDateText}>Completed 2021</Text>
-                <Text style={styles.docText}>• Passed with 7 A's and 2 B's, including A's in Mathematics, Science, and ICT.</Text>
-
-                <Text style={styles.docSectionTitle}>EXTRACURRICULAR ACTIVITIES</Text>
-                <Text style={styles.docSubhead}>President - School Coding Club</Text>
-                <Text style={styles.docDateText}>2023 - Present</Text>
-                <Text style={styles.docText}>• Organized the annual inter-school hackathon with over 200 participants.</Text>
-                <Text style={styles.docText}>• Conducted weekly Python programming workshops for junior students.</Text>
-
-                <Text style={styles.docSectionTitle}>SKILLS & INTERESTS</Text>
-                <Text style={styles.docText}>• <Text style={{fontWeight:'bold'}}>Languages:</Text> Python, HTML/CSS, Basic JavaScript.</Text>
-                <Text style={styles.docText}>• <Text style={{fontWeight:'bold'}}>Soft Skills:</Text> Leadership, Team Collaboration, Public Speaking.</Text>
-                <Text style={styles.docText}>• <Text style={{fontWeight:'bold'}}>Interests:</Text> Robotics, Chess, Open-source contributions.</Text>
-
               </View>
             </View>
           )}
-
-          {/* ========================================== */}
-          {/* TAB CONTENT: RESUME (EDIT MODE)            */}
-          {/* ========================================== */}
+          
+          {/* TAB CONTENT: RESUME EDIT */}
           {activeTab === "Resume" && isEditing && (
             <View style={styles.tabContent}>
-              
-              {/* Section 1: Upload Existing */}
               <View style={styles.sectionHeaderGroup}>
                 <FontAwesome6 name="cloud-arrow-up" size={18} color="#1E293B" />
                 <Text style={styles.sectionTitle}>Upload Existing Resume</Text>
               </View>
-              
               <TouchableOpacity style={styles.uploadBox} activeOpacity={0.8}>
                 <View style={styles.uploadIconContainer}>
                   <MaterialCommunityIcons name="file-document-outline" size={32} color="#3B82F6" />
@@ -382,43 +442,6 @@ export default function StudentProfileScreen() {
                   <Text style={styles.browseButtonText}>Select File</Text>
                 </View>
               </TouchableOpacity>
-
-              <View style={styles.orDividerRow}>
-                <View style={styles.orLine} />
-                <Text style={styles.orText}>OR</Text>
-                <View style={styles.orLine} />
-              </View>
-
-              {/* Section 2: Create from Template */}
-              <View style={styles.sectionHeaderGroup}>
-                <FontAwesome6 name="wand-magic-sparkles" size={18} color="#1E293B" />
-                <Text style={styles.sectionTitle}>Create with a Template</Text>
-              </View>
-              <Text style={styles.templateSubtitle}>Choose a design. We'll automatically fill it with your profile data!</Text>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateScroll}>
-                {templates.map((template) => (
-                  <TouchableOpacity key={template.id} style={styles.templateCard} activeOpacity={0.9}>
-                    <View style={styles.templatePreview}>
-                      <View style={[styles.tempHeaderBox, { backgroundColor: template.color }]} />
-                      <View style={styles.tempLineBlock}>
-                        <View style={styles.tempLineLong} />
-                        <View style={styles.tempLineShort} />
-                      </View>
-                      <View style={styles.tempLineBlock}>
-                        <View style={styles.tempLineLong} />
-                        <View style={styles.tempLineMedium} />
-                        <View style={styles.tempLineShort} />
-                      </View>
-                    </View>
-                    <Text style={styles.templateName}>{template.name}</Text>
-                    <View style={styles.useTemplateBtn}>
-                      <Text style={styles.useTemplateText}>Use Template</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
             </View>
           )}
 
@@ -436,10 +459,9 @@ const styles = StyleSheet.create({
   cancelText: { fontSize: 16, color: "#64748B" },
   saveText: { fontSize: 16, fontWeight: "bold", color: "#2563EB" },
   scrollContent: { paddingBottom: 40 },
-
-  /* Profile Header */
   profileHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
-  avatar: { width: 80, height: 80, borderRadius: 16, backgroundColor: "#3B82F6", justifyContent: "center", alignItems: "center", marginRight: 16 },
+  avatar: { width: 80, height: 80, borderRadius: 16, backgroundColor: "#3B82F6", justifyContent: "center", alignItems: "center", marginRight: 16, overflow: "hidden" },
+  avatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
   avatarText: { fontSize: 28, fontWeight: "bold", color: "#FFFFFF" },
   profileInfo: { flex: 1 },
   name: { fontSize: 20, fontWeight: "bold", color: "#1E293B", marginBottom: 4 },
@@ -448,17 +470,13 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 16, fontWeight: "bold", color: "#1E293B" },
   statLabel: { fontSize: 11, color: "#64748B", marginTop: 2 },
   statDivider: { width: 1, height: 24, backgroundColor: "#E2E8F0", marginHorizontal: 20 },
-
-  /* Tabs */
   tabsContainer: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#E2E8F0", paddingHorizontal: 10, backgroundColor: "#FFFFFF" },
   tab: { flex: 1, paddingVertical: 12, alignItems: "center", borderBottomWidth: 2, borderBottomColor: "transparent" },
   activeTab: { borderBottomColor: "#2563EB" },
   tabText: { fontSize: 14, fontWeight: "600", color: "#64748B" },
   activeTabText: { color: "#2563EB" },
   tabContent: { padding: 20 },
-  
-  /* About Cards */
-  card: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: "#F1F5F9", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 4, elevation: 1 },
+  card: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: "#F1F5F9", elevation: 1 },
   cardTitle: { fontSize: 16, fontWeight: "bold", color: "#1E293B", marginBottom: 16 },
   infoRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
   infoLabel: { fontSize: 13, color: "#64748B", flex: 1 },
@@ -473,12 +491,11 @@ const styles = StyleSheet.create({
   guardianRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
   guardianLabel: { fontSize: 13, color: "#64748B", flex: 1 },
   guardianValue: { fontSize: 13, color: "#1E293B", fontWeight: "500", flex: 2, textAlign: "right" },
-
-  /* About Edit Mode */
   photoEditContainer: { alignItems: "center", marginBottom: 30, marginTop: 10 },
-  largeAvatar: { width: 100, height: 100, borderRadius: 20, backgroundColor: "#3B82F6", justifyContent: "center", alignItems: "center" },
+  largeAvatar: { width: 100, height: 100, borderRadius: 20, backgroundColor: "#3B82F6", justifyContent: "center", alignItems: "center", overflow: "hidden" },
+  largeAvatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
   largeAvatarText: { fontSize: 36, fontWeight: "bold", color: "#FFFFFF" },
-  cameraBadge: { position: "absolute", bottom: 25, right: "35%", backgroundColor: "#1E293B", width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: "#F8FAFC" },
+  cameraBadge: { position: "absolute", bottom: 0, right: -10, backgroundColor: "#1E293B", width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: "#F8FAFC" },
   changePhotoText: { marginTop: 12, fontSize: 14, fontWeight: "600", color: "#2563EB" },
   inputGroup: { marginBottom: 20 },
   label: { fontSize: 13, fontWeight: "bold", color: "#1E293B", marginBottom: 8 },
@@ -488,15 +505,12 @@ const styles = StyleSheet.create({
   infoBoxText: { flex: 1, fontSize: 13, color: "#1E40AF", lineHeight: 20 },
   logoutButton: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 10, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2" },
   logoutButtonText: { color: "#EF4444", fontSize: 15, fontWeight: "bold" },
-
-  /* Resume View Mode */
   resumeActionRow: { flexDirection: "row", gap: 12, marginBottom: 20 },
-  resumePrimaryBtn: { flex: 1, flexDirection: "row", backgroundColor: "#2563EB", paddingVertical: 14, borderRadius: 12, justifyContent: "center", alignItems: "center", shadowColor: "#2563EB", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 4 },
+  resumePrimaryBtn: { flex: 1, flexDirection: "row", backgroundColor: "#2563EB", paddingVertical: 14, borderRadius: 12, justifyContent: "center", alignItems: "center", elevation: 4 },
   resumePrimaryBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "bold" },
   resumeSecondaryBtn: { flex: 1, flexDirection: "row", backgroundColor: "#EFF6FF", paddingVertical: 14, borderRadius: 12, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#BFDBFE" },
   resumeSecondaryBtnText: { color: "#2563EB", fontSize: 14, fontWeight: "bold" },
-  
-  resumeDocumentCard: { backgroundColor: "#FFFFFF", borderRadius: 8, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5, minHeight: 400 },
+  resumeDocumentCard: { backgroundColor: "#FFFFFF", borderRadius: 8, padding: 24, elevation: 5, minHeight: 400 },
   docHeaderName: { fontSize: 22, fontWeight: "900", color: "#0F172A", textAlign: "center", marginBottom: 4, textTransform: "uppercase" },
   docHeaderContact: { fontSize: 11, color: "#475569", textAlign: "center", marginBottom: 16 },
   docDivider: { height: 2, backgroundColor: "#1E293B", marginBottom: 16 },
@@ -504,32 +518,12 @@ const styles = StyleSheet.create({
   docSubhead: { fontSize: 13, fontWeight: "bold", color: "#334155" },
   docDateText: { fontSize: 11, color: "#64748B", marginBottom: 6, fontStyle: "italic" },
   docText: { fontSize: 12, color: "#334155", lineHeight: 20, marginBottom: 4 },
-
-  /* Resume Edit Mode */
   sectionHeaderGroup: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   sectionTitle: { fontSize: 16, fontWeight: "bold", color: "#1E293B", marginLeft: 8 },
-  
   uploadBox: { backgroundColor: "#F8FAFC", borderWidth: 2, borderColor: "#CBD5E1", borderStyle: "dashed", borderRadius: 16, padding: 24, alignItems: "center", marginBottom: 24 },
   uploadIconContainer: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#EFF6FF", justifyContent: "center", alignItems: "center", marginBottom: 12 },
   uploadTitle: { fontSize: 16, fontWeight: "600", color: "#1E293B", marginBottom: 4 },
   uploadSubtitle: { fontSize: 13, color: "#64748B", marginBottom: 16 },
   browseButton: { backgroundColor: "#1E293B", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
   browseButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "bold" },
-
-  orDividerRow: { flexDirection: "row", alignItems: "center", marginBottom: 24 },
-  orLine: { flex: 1, height: 1, backgroundColor: "#E2E8F0" },
-  orText: { marginHorizontal: 16, fontSize: 12, fontWeight: "bold", color: "#94A3B8" },
-
-  templateSubtitle: { fontSize: 13, color: "#64748B", marginBottom: 16, lineHeight: 20 },
-  templateScroll: { paddingBottom: 20, gap: 16 },
-  templateCard: { width: width * 0.4, backgroundColor: "#FFFFFF", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#E2E8F0", marginRight: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  templatePreview: { height: 140, backgroundColor: "#F8FAFC", borderRadius: 8, marginBottom: 12, padding: 8, borderWidth: 1, borderColor: "#F1F5F9" },
-  tempHeaderBox: { height: 20, borderRadius: 4, marginBottom: 12 },
-  tempLineBlock: { marginBottom: 12 },
-  tempLineLong: { height: 6, backgroundColor: "#CBD5E1", borderRadius: 3, marginBottom: 6, width: "100%" },
-  tempLineMedium: { height: 6, backgroundColor: "#E2E8F0", borderRadius: 3, marginBottom: 6, width: "70%" },
-  tempLineShort: { height: 6, backgroundColor: "#E2E8F0", borderRadius: 3, width: "40%" },
-  templateName: { fontSize: 14, fontWeight: "bold", color: "#1E293B", textAlign: "center", marginBottom: 8 },
-  useTemplateBtn: { backgroundColor: "#EFF6FF", paddingVertical: 8, borderRadius: 6, alignItems: "center" },
-  useTemplateText: { color: "#2563EB", fontSize: 12, fontWeight: "bold" },
 });
