@@ -10,9 +10,9 @@ const pool = new Pool({
 
 pool.connect((err, client, release) => {
   if (err) {
-    console.error('❌ Database connection failed:', err.message);
+    console.error(' Database connection failed:', err.message);
   } else {
-    console.log('✅ Successfully connected to Supabase PostgreSQL!');
+    console.log(' Successfully connected to Supabase PostgreSQL!');
     release();
   }
 });

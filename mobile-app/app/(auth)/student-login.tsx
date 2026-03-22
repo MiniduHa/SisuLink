@@ -41,15 +41,15 @@ export default function StudentLoginScreen() {
       });
       const data = await response.json();
       if (response.ok) {
-        // UPDATED: Passing database-fetched email and studentId along with names and grade
+        
         router.replace({
           pathname: "/(student-tabs)/student-screen",
           params: { 
             first_name: data.student.first_name, 
             last_name: data.student.last_name,
             grade: data.student.grade_level,
-            email: data.student.email,      // Real email from DB
-            studentId: data.student.studentId // Real Index Number from DB
+            email: data.student.email,      
+            studentId: data.student.studentId 
           }
         });
       } else {

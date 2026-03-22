@@ -1,102 +1,173 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Dimensions } from "react-native";
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  KeyboardAvoidingView, 
+  Platform, 
+  Dimensions,
+  TouchableWithoutFeedback,
+  Keyboard,
+  ScrollView,
+  Alert,
+  ActivityIndicator
+} from "react-native";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 const { height } = Dimensions.get("window");
+const API_URL = "http://172.20.10.7:5000/api/auth/login";
 
-export default function StudentLoginScreen() {
+export default function ParentLoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = () => {
-    // This will connect to your Node.js API later
-    console.log("Student logging in with:", email, password);
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Please enter both email and password.");
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          email: email.toLowerCase().trim(), 
+          password: password,
+          role: "Parent" 
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        router.replace({
+          pathname: "/(parent-tabs)/parent-screen", 
+          params: { 
+            full_name: data.user.full_name,
+            email: data.user.email,
+            child_ids: JSON.stringify(data.user.child_student_ids) 
+          }
+        });
+      } else {
+        Alert.alert("Login Failed", data.error || "Invalid credentials");
+      }
+    } catch (error) {
+      Alert.alert("Network Error", "Check your backend connection.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === "ios" ? "padding" : "height"} 
+      behavior={Platform.OS === "ios" ? "padding" : undefined} 
       style={styles.container}
     >
-      {/* Top Blue Section */}
-      <View style={styles.topSection}>
-        {/* Back Button */}
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <FontAwesome6 name="arrow-left" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
+      <ScrollView 
+        contentContainerStyle={{ flexGrow: 1 }} 
+        bounces={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={{ flex: 1 }}>
+            
+            {/* Top Blue Section */}
+            <View style={styles.topSection}>
+              <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                <FontAwesome6 name="arrow-left" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
 
-        <View style={styles.logoContainer}>
-          <FontAwesome6 name="graduation-cap" size={36} color="#FFFFFF" />
-        </View>
-        <Text style={styles.appName}>School Connect</Text>
-        <Text style={styles.tagline}>Connecting Education, Empowering Futures</Text>
-      </View>
+              <View style={styles.logoContainer}>
+                <FontAwesome6 name="graduation-cap" size={36} color="#FFFFFF" />
+              </View>
+              <Text style={styles.appName}>School Connect</Text>
+              <Text style={styles.tagline}>Connecting Education, Empowering Futures</Text>
+            </View>
 
-      {/* Bottom White Card Section */}
-      <View style={styles.bottomCard}>
-        <Text style={styles.welcomeText}>Welcome back</Text>
-        <Text style={styles.subtitleText}>Sign in to your account</Text>
+            {/* Bottom White Card Section */}
+            <View style={styles.bottomCard}>
+              <Text style={styles.welcomeText}>Welcome back</Text>
+              <Text style={styles.subtitleText}>Sign in to your account</Text>
 
-        {/* Email Input */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email Address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your email"
-            placeholderTextColor="#9CA3AF"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-        </View>
+              {/* Email Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Email Address</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter your email"
+                  placeholderTextColor="#9CA3AF"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
 
-        {/* Password Input */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordContainer}>
-            <TextInput
-              style={styles.passwordInput}
-              placeholder="Enter your password"
-              placeholderTextColor="#9CA3AF"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-            />
-            <TouchableOpacity 
-              style={styles.eyeIcon} 
-              onPress={() => setShowPassword(!showPassword)}
-            >
-              <Ionicons 
-                name={showPassword ? "eye-outline" : "eye-off-outline"} 
-                size={22} 
-                color="#9CA3AF" 
-              />
-            </TouchableOpacity>
+              {/* Password Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Password</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    placeholder="Enter your password"
+                    placeholderTextColor="#9CA3AF"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                  />
+                  <TouchableOpacity 
+                    style={styles.eyeIcon} 
+                    onPress={() => setShowPassword(!showPassword)}
+                  >
+                    <Ionicons 
+                      name={showPassword ? "eye-outline" : "eye-off-outline"} 
+                      size={22} 
+                      color="#9CA3AF" 
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Forgot Password */}
+              <TouchableOpacity style={styles.forgotPassword}>
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+
+              {/* Sign In Button */}
+              <TouchableOpacity 
+                style={[styles.signInButton, isLoading && { opacity: 0.7 }]} 
+                onPress={handleLogin} 
+                activeOpacity={0.8}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.signInButtonText}>Log In</Text>
+                )}
+              </TouchableOpacity>
+
+              {/* Footer */}
+              <View style={styles.footerRow}>
+                <Text style={styles.footerText}>New here? </Text>
+                <TouchableOpacity onPress={() => router.push("/signup")}>
+                  <Text style={styles.createAccountText}>Create Account</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
           </View>
-        </View>
-
-        {/* Forgot Password */}
-        <TouchableOpacity style={styles.forgotPassword}>
-          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-        </TouchableOpacity>
-
-        {/* Sign In Button */}
-        <TouchableOpacity style={styles.signInButton} onPress={handleLogin} activeOpacity={0.8}>
-          <Text style={styles.signInButtonText}>Sign In</Text>
-        </TouchableOpacity>
-
-        {/* Footer */}
-        <View style={styles.footerRow}>
-          <Text style={styles.footerText}>New here? </Text>
-          <TouchableOpacity onPress={() => router.push("/signup")}>
-            <Text style={styles.createAccountText}>Create Account</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        </TouchableWithoutFeedback>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -104,10 +175,11 @@ export default function StudentLoginScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: "#2B8CEE" // Blue background from your mockup
+    backgroundColor: "#2B8CEE" 
   },
   topSection: {
-    height: height * 0.35, // Takes up top 35% of the screen
+    height: height * 0.35, 
+    minHeight: 250,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 24,
@@ -121,7 +193,7 @@ const styles = StyleSheet.create({
   logoContainer: {
     width: 70,
     height: 70,
-    backgroundColor: "rgba(255, 255, 255, 0.2)", // Semi-transparent white
+    backgroundColor: "rgba(255, 255, 255, 0.2)", 
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
@@ -146,6 +218,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     paddingHorizontal: 28,
     paddingTop: 40,
+    paddingBottom: 40, 
   },
   welcomeText: {
     fontSize: 24,
@@ -168,7 +241,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: "#F8FAFC", // Light gray background like the mockup
+    backgroundColor: "#F8FAFC", 
     borderRadius: 12,
     padding: 16,
     fontSize: 15,
@@ -204,7 +277,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     marginBottom: 30,
-    shadowColor: "#2563EB", // Adds a nice blue glow shadow
+    shadowColor: "#2563EB", 
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,

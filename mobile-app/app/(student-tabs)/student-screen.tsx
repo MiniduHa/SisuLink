@@ -1,516 +1,441 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
   View, 
   Text, 
   StyleSheet, 
   ScrollView, 
-  TouchableOpacity,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
+  TouchableOpacity, 
   Dimensions,
-  Alert,
+  Modal,
+  Platform,
   Image
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { FontAwesome6, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import * as ImagePicker from 'expo-image-picker';
+import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 
-const { width } = Dimensions.get("window"); 
+const { width } = Dimensions.get("window");
 
-export default function StudentProfileScreen() {
+export default function StudentScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // --- DYNAMIC DATA FROM LOGIN/DASHBOARD ---
-  const firstName = (params.first_name as string) || "Student";
-  const lastName = (params.last_name as string) || "";
-  const email = (params.email as string) || "student@school.lk";
-  const gradeLevel = (params.grade as string) || "11";
-  const attendance = (params.attendance as string) || "85%";
-  const studentId = (params.studentId as string) || "STU-90214";
-
-  // Logic for Avatar Initials
-  const avatarInitials = (firstName[0] + (lastName[0] || "")).toUpperCase();
-
-  // UPDATED: Profile Photo State now catches the image passed from the Home Screen!
+  // --- DYNAMIC STUDENT DATA STATES ---
+  const [firstName, setFirstName] = useState((params.first_name as string) || "Student");
+  const [lastName, setLastName] = useState((params.last_name as string) || "");
+  const [email, setEmail] = useState((params.email as string) || "");
+  const [gradeLevel, setGradeLevel] = useState((params.grade as string) || "Grade 11");
   const [profilePhoto, setProfilePhoto] = useState<string | null>((params.profile_photo as string) || null);
-
-  // Navigation & Tab States
-  const [activeTab, setActiveTab] = useState("About");
-  const tabs = ["About", "Resume"];
-
-  // Edit Mode State
-  const [isEditing, setIsEditing] = useState(false);
   
-  // Editable Form State (About Tab)
-  const [mobile, setMobile] = useState("+94 77 123 4567");
-  const [homePhone, setHomePhone] = useState("+94 11 234 5678");
-  const [address, setAddress] = useState("123, Flower Road, Colombo 07");
+  const studentId = (params.studentId as string) || "";
 
-  // Mock Data for O/L Results
-  const isOLCompleted = true;
-  const olResults = [
-    { subject: "Buddhism", grade: "A" },
-    { subject: "Sinhala Language & Lit.", grade: "A" },
-    { subject: "Mathematics", grade: "A" },
-    { subject: "Science", grade: "A" },
-    { subject: "English", grade: "B" },
-    { subject: "History", grade: "A" },
-    { subject: "Business & Acct.", grade: "A" },
-    { subject: "Geography", grade: "B" },
-    { subject: "ICT", grade: "A" },
-  ];
+  const avatarInitials = (firstName[0] + (lastName[0] || "")).toUpperCase();
+  const isALevel = gradeLevel.includes("12") || gradeLevel.includes("13");
+  const academicLevel = isALevel ? "A/L" : "O/L";
 
-  const handleLogout = () => {
-    Alert.alert("Log Out", "Are you sure you want to log out?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Log Out", style: "destructive", onPress: () => router.replace("/selection") }
-    ]);
-  };
+  // --- FETCH LATEST DATA EVERY TIME SCREEN APPEARS (BYPASS CACHE) ---
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
 
-  // --- SAVE & UPLOAD LOGIC ---
-  const handleSave = async () => {
-    if (!profilePhoto || profilePhoto.startsWith('http')) {
-      setIsEditing(false);
-      Alert.alert("Success", "Profile updated successfully!");
-      return;
-    }
+      const fetchProfile = async () => {
+        if (!studentId) return;
+        try {
+          const timestamp = new Date().getTime();
+          const response = await fetch(`http://172.20.10.7:5000/api/profile/${studentId}?t=${timestamp}`, {
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          });
+          
+          if (response.ok && isActive) {
+            const data = await response.json();
+            setFirstName(data.first_name);
+            setLastName(data.last_name);
+            setEmail(data.email);
+            setGradeLevel(data.grade_level);
+            
+            if (data.profile_photo_url) {
+              setProfilePhoto(data.profile_photo_url);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch fresh profile data:", error);
+        }
+      };
 
-    const formData = new FormData();
-    
-    formData.append('photo', {
-      uri: Platform.OS === 'android' ? profilePhoto : profilePhoto.replace('file://', ''),
-      name: `${studentId}_avatar.jpg`,
-      type: 'image/jpeg',
-    } as any);
+      fetchProfile();
 
-    formData.append('studentId', studentId);
-
-    try {
-      const response = await fetch("http://172.20.10.7:5000/api/profile/upload-avatar", {
-        method: "POST",
-        body: formData, 
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setIsEditing(false);
-        Alert.alert("Success", "Profile photo updated permanently!");
-        setProfilePhoto(data.photoUrl); 
-      } else {
-        Alert.alert("Upload Failed", data.error || "Failed to upload image.");
-      }
-    } catch (error) {
-      console.error("Upload error:", error);
-      Alert.alert("Network Error", "Could not connect to the server.");
-    }
-  };
-
-  // --- IMAGE PICKER LOGIC ---
-  const handlePickImage = () => {
-    Alert.alert(
-      "Profile Photo",
-      "Choose an option",
-      [
-        { text: "Camera", onPress: openCamera },
-        { text: "Gallery", onPress: openGallery },
-        { text: "Cancel", style: "cancel" }
-      ]
-    );
-  };
-
-  const openCamera = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    if (permissionResult.granted === false) {
-      Alert.alert("Permission to access camera is required!");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-    if (!result.canceled) {
-      setProfilePhoto(result.assets[0].uri);
-    }
-  };
-
-  const openGallery = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permissionResult.granted === false) {
-      Alert.alert("Permission to access gallery is required!");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'], 
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-    if (!result.canceled) {
-      setProfilePhoto(result.assets[0].uri);
-    }
-  };
-
-  const InfoRow = ({ label, value }: { label: string, value: string }) => (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
+      return () => { isActive = false; };
+    }, [studentId])
   );
 
+  // --- DASHBOARD STATES ---
+  const [greeting, setGreeting] = useState("");
+  const [currentDate, setCurrentDate] = useState("");
+  const [isAttendanceModalVisible, setAttendanceModalVisible] = useState(false);
+  const [isSubjectModalVisible, setSubjectModalVisible] = useState(false);
+  const [selectedSubject, setSelectedSubject] = useState<any>(null);
+
+  useEffect(() => {
+    const date = new Date();
+    const hour = date.getHours();
+    if (hour < 12) setGreeting("Good morning");
+    else if (hour < 18) setGreeting("Good afternoon");
+    else setGreeting("Good evening");
+
+    const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    setCurrentDate(`${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`);
+  }, []);
+
+  // --- DATA ARRAYS ---
+  const ongoingSubjects = isALevel 
+    ? [ { id: "1", name: "Combined Mathematics", teacher: "Mr. Perera", icon: "sigma", color: "#2563EB", bg: "#EFF6FF" }, { id: "2", name: "Physics", teacher: "Mrs. Silva", icon: "flask", color: "#7C3AED", bg: "#F5F3FF" }, { id: "3", name: "Chemistry", teacher: "Mr. Fernando", icon: "vial", color: "#059669", bg: "#ECFDF5" } ]
+    : [ { id: "1", name: "Mathematics", teacher: "Mr. Bandara", icon: "sigma", color: "#2563EB", bg: "#EFF6FF" }, { id: "2", name: "Science", teacher: "Mrs. Kumari", icon: "flask", color: "#7C3AED", bg: "#F5F3FF" }, { id: "3", name: "English", teacher: "Ms. Jayawardena", icon: "book", color: "#059669", bg: "#ECFDF5" } ];
+
+  const gradesData = isALevel
+    ? [ { id: "1", subject: "Combined Mathematics", type: "Mid-term Exam", grade: "A", gradeColor: "#15803D", gradeBg: "#DCFCE7", icon: "sigma", iconBg: "#E0F2FE", iconColor: "#2563EB", trend: "arrow-trend-up", trendColor: "#22C55E" }, { id: "2", subject: "Physics", type: "Assessment", grade: "B+", gradeColor: "#4338CA", gradeBg: "#E0E7FF", icon: "flask", iconBg: "#EDE9FE", iconColor: "#7C3AED", trend: "arrow-right", trendColor: "#9CA3AF" } ]
+    : [ { id: "1", subject: "Mathematics", type: "Term Test", grade: "A", gradeColor: "#15803D", gradeBg: "#DCFCE7", icon: "sigma", iconBg: "#E0F2FE", iconColor: "#2563EB", trend: "arrow-trend-up", trendColor: "#22C55E" }, { id: "2", subject: "Science", type: "Monthly Test", grade: "A-", gradeColor: "#15803D", gradeBg: "#DCFCE7", icon: "flask", iconBg: "#EDE9FE", iconColor: "#7C3AED", trend: "arrow-trend-up", trendColor: "#22C55E" } ];
+
+  const internshipsData = [
+    { id: "1", title: "Software Engineering Intern", company: "Dialog Axiata • Colombo", type: "FULL TIME", bg: "#E0F2FE" },
+    { id: "2", title: "Junior UI/UX Designer", company: "WSO2 • Remote", type: "PART TIME", bg: "#F8FAFC" },
+  ];
+
+  // RESTORED: subjectMaterials data
+  const subjectMaterials = {
+    videos: [
+      { id: "v1", title: "Chapter 1: Introduction", duration: "45 mins" },
+      { id: "v2", title: "Chapter 2: Advanced Theory", duration: "50 mins" },
+    ],
+    notes: [
+      { id: "n1", title: "Full Lecture Notes - Unit 1", size: "2.4 MB" },
+      { id: "n2", title: "Quick Revision Summary", size: "1.1 MB" },
+    ],
+    modelPapers: [
+      { id: "m1", title: "Royal College Model Paper", size: "3.2 MB" },
+      { id: "m2", title: "Zonal Education Model Paper", size: "4.1 MB" },
+    ],
+    pastPapers: [
+      { id: "p1", title: "2023 Past Paper", size: "5.6 MB" },
+      { id: "p2", title: "2022 Past Paper", size: "4.8 MB" },
+    ]
+  };
+
+  const calendarDays = [
+    { day: 28, type: 'prev', status: 'none' }, { day: 29, type: 'prev', status: 'none' }, { day: 30, type: 'prev', status: 'none' },
+    { day: 1, type: 'current', status: 'present' }, { day: 2, type: 'current', status: 'present' }, { day: 3, type: 'current', status: 'absent' }, { day: 4, type: 'current', status: 'present' },
+    { day: 5, type: 'current', status: 'none' }, { day: 6, type: 'current', status: 'present', selected: true }, { day: 7, type: 'current', status: 'none' }, { day: 8, type: 'current', status: 'present' }, { day: 9, type: 'current', status: 'present' }, { day: 10, type: 'current', status: 'present' }, { day: 11, type: 'current', status: 'none' },
+    { day: 12, type: 'current', status: 'present' }, { day: 13, type: 'current', status: 'present' }, { day: 14, type: 'current', status: 'absent' }, { day: 15, type: 'current', status: 'present' }, { day: 16, type: 'current', status: 'present' }, { day: 17, type: 'current', status: 'present' }, { day: 18, type: 'current', status: 'none' },
+  ];
+
+  const openSubject = (subject: any) => {
+    setSelectedSubject(subject);
+    setSubjectModalVisible(true);
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
         <View style={styles.header}>
-          {isEditing ? (
-            <TouchableOpacity onPress={() => setIsEditing(false)} style={styles.iconButton}>
-              <Text style={styles.cancelText}>Cancel</Text>
+          <View style={styles.userInfo}>
+            <TouchableOpacity 
+              style={styles.avatarPlaceholder}
+              onPress={() => router.push({
+                pathname: "/student-profile",
+                params: { 
+                  first_name: firstName, 
+                  last_name: lastName, 
+                  grade: gradeLevel, 
+                  attendance: "85%", 
+                  email: email,      
+                  studentId: studentId,
+                  profile_photo: profilePhoto || ""
+                }
+              })}
+              activeOpacity={0.8}
+            >
+              {profilePhoto && profilePhoto.length > 5 ? (
+                <Image key={profilePhoto} source={{ uri: profilePhoto }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{avatarInitials}</Text>
+              )}
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
-              <FontAwesome6 name="arrow-left" size={20} color="#1E293B" />
-            </TouchableOpacity>
-          )}
 
-          <Text style={styles.headerTitle}>{isEditing ? "Edit Profile" : "Profile"}</Text>
-          
-          {isEditing ? (
-            <TouchableOpacity onPress={handleSave} style={styles.iconButton}>
-              <Text style={styles.saveText}>Save</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.iconButton}>
-              <Feather name="edit" size={20} color="#1E293B" />
-            </TouchableOpacity>
-          )}
+            <View>
+              <Text style={styles.greeting}>{greeting}, {firstName}!</Text>
+              <Text style={styles.dateText}>{currentDate} • {academicLevel}</Text>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.notificationBtn} activeOpacity={0.8}>
+            <Ionicons name="notifications" size={20} color="#2563EB" />
+            <View style={styles.notificationDot} />
+          </TouchableOpacity>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          
-          {/* MAIN PROFILE HEADER */}
-          {activeTab === "About" && !isEditing && (
-            <View style={styles.profileHeader}>
-              <View style={styles.avatar}>
-                {profilePhoto ? (
-                  <Image source={{ uri: profilePhoto }} style={styles.avatarImage} />
-                ) : (
-                  <Text style={styles.avatarText}>{avatarInitials}</Text>
-                )}
-              </View>
-              <View style={styles.profileInfo}>
-                <Text style={styles.name}>{firstName} {lastName}</Text>
-                
-                <View style={[styles.statsRow, { marginTop: 12 }]}>
-                  <View style={styles.statBox}>
-                    <Text style={styles.statValue}>{attendance}</Text>
-                    <Text style={styles.statLabel}>Attendance</Text>
-                  </View>
-                </View>
-              </View>
+        <View style={styles.attendanceCard}>
+          <Text style={styles.sectionSubtitle}>Attendance Overview</Text>
+          <View style={styles.attendanceRow}>
+            <View style={styles.attendanceLeft}>
+              <Text style={styles.attendancePercentage}>85%</Text>
+              <Text style={styles.attendanceStatus}>On Track</Text>
             </View>
-          )}
+            <TouchableOpacity onPress={() => setAttendanceModalVisible(true)}>
+              <FontAwesome6 name="calendar-check" size={20} color="#3B82F6" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.attendanceFooter}>Excellent consistency this month.</Text>
+        </View>
 
-          {/* Custom Tabs */}
-          <View style={styles.tabsContainer}>
-            {tabs.map((tab) => (
-              <TouchableOpacity 
-                key={tab} 
-                style={[styles.tab, activeTab === tab && styles.activeTab]}
-                onPress={() => {
-                  setActiveTab(tab);
-                  setIsEditing(false);
-                }}
-              >
-                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                  {tab}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>On Going Subjects</Text>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subjectsScroll}>
+          {ongoingSubjects.map((item) => (
+            <TouchableOpacity key={item.id} style={[styles.subjectCard, { backgroundColor: item.bg }]} onPress={() => openSubject(item)} activeOpacity={0.9}>
+              <View style={[styles.subjectIconBox, { backgroundColor: item.color + '20' }]}> 
+                {item.icon === "sigma" ? ( <MaterialCommunityIcons name="sigma" size={28} color={item.color} /> ) : ( <FontAwesome6 name={item.icon} size={22} color={item.color} /> )}
+              </View>
+              <Text style={styles.subjectCardTitle} numberOfLines={2}>{item.name}</Text>
+              <Text style={styles.subjectCardTeacher}>{item.teacher}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={[styles.sectionHeader, { marginTop: 24 }]}>
+          <Text style={styles.sectionTitle}>Latest Grades</Text>
+          <TouchableOpacity onPress={() => router.push("/grades")}><Text style={styles.linkText}>View Report</Text></TouchableOpacity>
+        </View>
+
+        {gradesData.map((item) => (
+          <View key={item.id} style={styles.gradeCard}>
+            <View style={styles.gradeInfoLeft}>
+              <View style={[styles.gradeIconContainer, { backgroundColor: item.iconBg }]}>
+                {item.icon === "sigma" ? ( <MaterialCommunityIcons name="sigma" size={24} color={item.iconColor} /> ) : ( <FontAwesome6 name={item.icon} size={18} color={item.iconColor} /> )}
+              </View>
+              <View><Text style={styles.subjectName}>{item.subject}</Text><Text style={styles.assessmentType}>{item.type}</Text></View>
+            </View>
+            <View style={styles.gradeInfoRight}>
+              <View style={[styles.gradeBadge, { backgroundColor: item.gradeBg }]}><Text style={[styles.gradeBadgeText, { color: item.gradeColor }]}>{item.grade}</Text></View>
+              <FontAwesome6 name={item.trend} size={14} color={item.trendColor} style={{ marginLeft: 8 }} />
+            </View>
+          </View>
+        ))}
+
+        <View style={[styles.sectionHeader, { marginTop: 10 }]}>
+          <Text style={styles.sectionTitle}>Recommended Internships</Text>
+          <TouchableOpacity onPress={() => router.push("/jobs")}><Text style={styles.linkText}>See All</Text></TouchableOpacity>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.internshipScroll}>
+          {internshipsData.map((item) => (
+            <View key={item.id} style={[styles.internshipCard, { backgroundColor: item.bg }]}>
+              <View style={styles.internshipTopRow}>
+                <View style={styles.companyLogoPlaceholder}><Text style={styles.companyInitial}>{item.company.charAt(0)}</Text></View>
+                <View style={styles.typeBadge}><Text style={styles.typeBadgeText}>{item.type}</Text></View>
+              </View>
+              <Text style={styles.internshipTitle} numberOfLines={2}>{item.title}</Text>
+              <Text style={styles.internshipCompany} numberOfLines={1}>{item.company}</Text>
+              <TouchableOpacity style={styles.applyButton} activeOpacity={0.8} onPress={() => router.push("/jobs")}><Text style={styles.applyButtonText}>Apply Now</Text></TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+      </ScrollView>
+
+      {/* --- SUBJECT MATERIALS MODAL --- */}
+      <Modal animationType="slide" transparent={false} visible={isSubjectModalVisible} onRequestClose={() => setSubjectModalVisible(false)}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setSubjectModalVisible(false)} style={styles.modalBackButton}>
+              <FontAwesome6 name="arrow-left" size={20} color="#1E293B" />
+            </TouchableOpacity>
+            <Text style={styles.modalHeaderTitle} numberOfLines={1}>{selectedSubject?.name} Materials</Text>
+            <View style={{ width: 36 }}></View>
           </View>
 
-          {/* TAB CONTENT: ABOUT (VIEW MODE) */}
-          {activeTab === "About" && !isEditing && (
-            <View style={styles.tabContent}>
-              
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Academic Information</Text>
-                <InfoRow label="Student ID" value={studentId} />
-                <InfoRow label="First Name" value={firstName} />
-                <InfoRow label="Last Name" value={lastName} />
-                <InfoRow label="Email Address" value={email} />
-                <InfoRow label="Grade" value={gradeLevel} />
-                {(gradeLevel === "12" || gradeLevel === "13") && (
-                   <InfoRow label="Stream/Section" value="Physical Science" />
-                )}
-              </View>
+          <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+            <View style={[styles.subjectBanner, { backgroundColor: selectedSubject?.bg || '#EFF6FF' }]}>
+               <View style={[styles.bannerIconBox, { backgroundColor: selectedSubject?.color || '#2563EB' }]}>
+                  {selectedSubject?.icon === "sigma" ? (
+                    <MaterialCommunityIcons name="sigma" size={32} color="#FFFFFF" />
+                  ) : (
+                    <FontAwesome6 name={selectedSubject?.icon || "book"} size={26} color="#FFFFFF" />
+                  )}
+               </View>
+               <View style={{ flex: 1 }}>
+                  <Text style={styles.bannerTitle}>{selectedSubject?.name}</Text>
+                  <Text style={styles.bannerTeacher}>Taught by {selectedSubject?.teacher}</Text>
+               </View>
+            </View>
 
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Personal Information</Text>
-                <InfoRow label="NIC" value="200512345678" />
-                <InfoRow label="Mobile Number" value={mobile} />
-                <InfoRow label="Home Phone" value={homePhone} />
-                <InfoRow label="Date of Birth" value="15 May 2005" />
-                <InfoRow label="Nationality" value="Sri Lankan" />
-                <InfoRow label="Religion" value="Buddhism" />
-                <View style={styles.infoRowColumn}>
-                  <Text style={styles.infoLabel}>Address</Text>
-                  <Text style={styles.infoValueMultline}>{address}</Text>
-                </View>
-                <InfoRow label="District" value="Colombo" />
-                <InfoRow label="Province" value="Western Province" />
+            <View style={styles.materialSection}>
+              <View style={styles.materialSectionHeader}>
+                <Feather name="video" size={18} color="#1E293B" />
+                <Text style={styles.materialSectionTitle}>Video Lectures</Text>
               </View>
-
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Guardian Information</Text>
-                <View style={styles.guardianRow}>
-                  <Text style={styles.guardianLabel}>Father</Text>
-                  <Text style={styles.guardianValue}>Mr. Nimal Wickramasinghe</Text>
-                </View>
-                <View style={styles.guardianRow}>
-                  <Text style={styles.guardianLabel}>Phone</Text>
-                  <Text style={styles.guardianValue}>+94 71 987 6543</Text>
-                </View>
-                <View style={styles.guardianRow}>
-                  <Text style={styles.guardianLabel}>Email</Text>
-                  <Text style={styles.guardianValue}>nimal.w@email.com</Text>
-                </View>
-                <View style={styles.cardDivider} />
-                <View style={styles.guardianRow}>
-                  <Text style={styles.guardianLabel}>Mother</Text>
-                  <Text style={styles.guardianValue}>Mrs. Shirani Wickramasinghe</Text>
-                </View>
-                <View style={styles.guardianRow}>
-                  <Text style={styles.guardianLabel}>Phone</Text>
-                  <Text style={styles.guardianValue}>+94 77 234 5678</Text>
-                </View>
-                <View style={styles.guardianRow}>
-                  <Text style={styles.guardianLabel}>Email</Text>
-                  <Text style={styles.guardianValue}>shirani.w@email.com</Text>
-                </View>
-              </View>
-
-              {isOLCompleted && (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>G.C.E O/L Examination</Text>
-                  <InfoRow label="School" value="Royal College, Colombo" />
-                  <InfoRow label="Year" value="2021" />
-                  <InfoRow label="Status" value="Passed" />
-                  <InfoRow label="Scheme" value="Local Syllabus" />
-                  <View style={styles.cardDivider} />
-                  <Text style={[styles.infoLabel, { marginBottom: 12 }]}>Subjects & Results</Text>
-                  <View style={styles.resultsGrid}>
-                    {olResults.map((item, index) => (
-                      <View key={index} style={styles.resultItem}>
-                        <Text style={styles.resultSubject} numberOfLines={1}>{item.subject}</Text>
-                        <Text style={[styles.resultGrade, { color: item.grade === "A" ? "#16A34A" : item.grade === "B" ? "#2563EB" : "#D97706" }]}>
-                          {item.grade}
-                        </Text>
-                      </View>
-                    ))}
+              {subjectMaterials.videos.map(video => (
+                <View key={video.id} style={styles.materialItem}>
+                  <View style={styles.materialItemIconBox}><FontAwesome6 name="play" size={14} color="#EF4444" /></View>
+                  <View style={styles.materialItemInfo}>
+                    <Text style={styles.materialItemTitle}>{video.title}</Text>
+                    <Text style={styles.materialItemSub}>{video.duration}</Text>
                   </View>
+                  <TouchableOpacity style={styles.actionIconButton}><FontAwesome6 name="circle-play" size={22} color="#2563EB" /></TouchableOpacity>
                 </View>
-              )}
-
-              <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
-                <FontAwesome6 name="right-from-bracket" size={16} color="#EF4444" style={{ marginRight: 8 }} />
-                <Text style={styles.logoutButtonText}>Log Out</Text>
-              </TouchableOpacity>
+              ))}
             </View>
-          )}
 
-          {/* TAB CONTENT: ABOUT (EDIT MODE) */}
-          {activeTab === "About" && isEditing && (
-            <View style={styles.tabContent}>
-              <View style={styles.photoEditContainer}>
-                <TouchableOpacity onPress={handlePickImage} activeOpacity={0.8}>
-                  <View style={styles.largeAvatar}>
-                    {profilePhoto ? (
-                      <Image source={{ uri: profilePhoto }} style={styles.largeAvatarImage} />
-                    ) : (
-                      <Text style={styles.largeAvatarText}>{avatarInitials}</Text>
-                    )}
+            <View style={styles.materialSection}>
+              <View style={styles.materialSectionHeader}>
+                <Feather name="file-text" size={18} color="#1E293B" />
+                <Text style={styles.materialSectionTitle}>Lecture Notes</Text>
+              </View>
+              {subjectMaterials.notes.map(note => (
+                <View key={note.id} style={styles.materialItem}>
+                  <View style={styles.materialItemIconBox}><FontAwesome6 name="file-pdf" size={16} color="#EF4444" /></View>
+                  <View style={styles.materialItemInfo}>
+                    <Text style={styles.materialItemTitle}>{note.title}</Text>
+                    <Text style={styles.materialItemSub}>PDF • {note.size}</Text>
                   </View>
-                  <View style={styles.cameraBadge}>
-                    <Feather name="camera" size={16} color="#FFFFFF" />
+                  <TouchableOpacity style={styles.downloadButton}><Feather name="download" size={16} color="#2563EB" /></TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* --- ATTENDANCE MODAL --- */}
+      <Modal animationType="slide" transparent={false} visible={isAttendanceModalVisible} onRequestClose={() => setAttendanceModalVisible(false)}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setAttendanceModalVisible(false)} style={styles.modalBackButton}>
+              <FontAwesome6 name="arrow-left" size={20} color="#1E293B" />
+            </TouchableOpacity>
+            <Text style={styles.modalHeaderTitle}>Attendance Details</Text>
+            <View style={{ width: 36 }}></View>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.statsRow}>
+              <View style={[styles.statCard, { backgroundColor: "#F0F9FF", flex: 1.2 }]}>
+                <Text style={styles.statLabel}>Total Attendance</Text>
+                <View style={styles.statValueRow}>
+                  <Text style={styles.statValue}>85%</Text>
+                  <Text style={styles.statTrend}>+2%</Text>
+                </View>
+              </View>
+              <View style={[styles.statCard, { flex: 1 }]}><Text style={styles.statLabel}>Present</Text><Text style={styles.statValue}>170</Text></View>
+              <View style={[styles.statCard, { flex: 1 }]}><Text style={styles.statLabel}>Absent</Text><Text style={styles.statValue}>30</Text></View>
+            </View>
+
+            <View style={styles.calendarWidget}>
+              <View style={styles.calendarHeader}>
+                <FontAwesome6 name="chevron-left" size={14} color="#1E293B" /><Text style={styles.calendarMonth}>October 2023</Text><FontAwesome6 name="chevron-right" size={14} color="#1E293B" />
+              </View>
+              <View style={styles.calendarGrid}>
+                {calendarDays.map((item, index) => (
+                  <View key={index} style={styles.calendarCell}>
+                    <View style={[styles.dayNumberCircle, item.selected && styles.dayNumberSelected]}>
+                      <Text style={[styles.dayNumberText, item.type === 'prev' && styles.dayNumberPrev, item.selected && styles.dayNumberTextSelected]}>{item.day}</Text>
+                    </View>
+                    {item.status === 'present' && <View style={[styles.statusDot, { backgroundColor: '#16A34A' }]} />}
+                    {item.status === 'absent' && <View style={[styles.statusDot, { backgroundColor: '#EF4444' }]} />}
                   </View>
-                </TouchableOpacity>
-                <Text style={styles.changePhotoText} onPress={handlePickImage}>Change Profile Photo</Text>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Mobile Number</Text>
-                <TextInput
-                  style={styles.input}
-                  value={mobile}
-                  onChangeText={setMobile}
-                  keyboardType="phone-pad"
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Home Phone</Text>
-                <TextInput
-                  style={styles.input}
-                  value={homePhone}
-                  onChangeText={setHomePhone}
-                  keyboardType="phone-pad"
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Home Address</Text>
-                <TextInput
-                  style={styles.textArea}
-                  multiline
-                  numberOfLines={3}
-                  value={address}
-                  onChangeText={setAddress}
-                  placeholderTextColor="#9CA3AF"
-                  textAlignVertical="top"
-                />
-              </View>
-
-              <View style={styles.infoBox}>
-                <Feather name="info" size={16} color="#3B82F6" style={{ marginRight: 8 }} />
-                <Text style={styles.infoBoxText}>
-                  To change your locked personal, academic, or guardian information, please contact the school administration directly.
-                </Text>
+                ))}
               </View>
             </View>
-          )}
-
-          {/* TAB CONTENT: RESUME VIEW */}
-          {activeTab === "Resume" && !isEditing && (
-            <View style={styles.tabContent}>
-              <View style={styles.resumeActionRow}>
-                <TouchableOpacity style={styles.resumePrimaryBtn} activeOpacity={0.8}>
-                  <FontAwesome6 name="file-arrow-down" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-                  <Text style={styles.resumePrimaryBtnText}>Download PDF</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.resumeSecondaryBtn} activeOpacity={0.8}>
-                  <FontAwesome6 name="share-nodes" size={16} color="#2563EB" style={{ marginRight: 8 }} />
-                  <Text style={styles.resumeSecondaryBtnText}>Share</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.resumeDocumentCard}>
-                <Text style={styles.docHeaderName}>{firstName} {lastName}</Text>
-                <Text style={styles.docHeaderContact}>{email} | {mobile} | Colombo, LK</Text>
-                <View style={styles.docDivider} />
-                <Text style={styles.docSectionTitle}>OBJECTIVE</Text>
-                <Text style={styles.docText}>
-                  A highly motivated Grade {gradeLevel} student. Seeking an internship opportunity to apply problem-solving skills and learn in a professional environment.
-                </Text>
-              </View>
-            </View>
-          )}
-          
-          {/* TAB CONTENT: RESUME EDIT */}
-          {activeTab === "Resume" && isEditing && (
-            <View style={styles.tabContent}>
-              <View style={styles.sectionHeaderGroup}>
-                <FontAwesome6 name="cloud-arrow-up" size={18} color="#1E293B" />
-                <Text style={styles.sectionTitle}>Upload Existing Resume</Text>
-              </View>
-              <TouchableOpacity style={styles.uploadBox} activeOpacity={0.8}>
-                <View style={styles.uploadIconContainer}>
-                  <MaterialCommunityIcons name="file-document-outline" size={32} color="#3B82F6" />
-                </View>
-                <Text style={styles.uploadTitle}>Browse files to upload</Text>
-                <Text style={styles.uploadSubtitle}>Supports PDF and DOCX (Max 5MB)</Text>
-                <View style={styles.browseButton}>
-                  <Text style={styles.browseButtonText}>Select File</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
-
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 12, backgroundColor: "#FFFFFF" },
-  iconButton: { padding: 8, minWidth: 60, alignItems: "center" },
-  headerTitle: { fontSize: 18, fontWeight: "bold", color: "#1E293B" },
-  cancelText: { fontSize: 16, color: "#64748B" },
-  saveText: { fontSize: 16, fontWeight: "bold", color: "#2563EB" },
-  scrollContent: { paddingBottom: 40 },
-  profileHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
-  avatar: { width: 80, height: 80, borderRadius: 16, backgroundColor: "#3B82F6", justifyContent: "center", alignItems: "center", marginRight: 16, overflow: "hidden" },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 100 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
+  userInfo: { flexDirection: "row", alignItems: "center" },
+  avatarPlaceholder: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#2563EB", justifyContent: "center", alignItems: "center", marginRight: 12, overflow: "hidden" },
   avatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  avatarText: { fontSize: 28, fontWeight: "bold", color: "#FFFFFF" },
-  profileInfo: { flex: 1 },
-  name: { fontSize: 20, fontWeight: "bold", color: "#1E293B", marginBottom: 4 },
-  statsRow: { flexDirection: "row", alignItems: "center" },
-  statBox: { alignItems: "flex-start" },
-  statValue: { fontSize: 16, fontWeight: "bold", color: "#1E293B" },
-  statLabel: { fontSize: 11, color: "#64748B", marginTop: 2 },
-  statDivider: { width: 1, height: 24, backgroundColor: "#E2E8F0", marginHorizontal: 20 },
-  tabsContainer: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#E2E8F0", paddingHorizontal: 10, backgroundColor: "#FFFFFF" },
-  tab: { flex: 1, paddingVertical: 12, alignItems: "center", borderBottomWidth: 2, borderBottomColor: "transparent" },
-  activeTab: { borderBottomColor: "#2563EB" },
-  tabText: { fontSize: 14, fontWeight: "600", color: "#64748B" },
-  activeTabText: { color: "#2563EB" },
-  tabContent: { padding: 20 },
-  card: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: "#F1F5F9", elevation: 1 },
-  cardTitle: { fontSize: 16, fontWeight: "bold", color: "#1E293B", marginBottom: 16 },
-  infoRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
-  infoLabel: { fontSize: 13, color: "#64748B", flex: 1 },
-  infoValue: { fontSize: 13, color: "#1E293B", fontWeight: "500", flex: 1.5, textAlign: "right" },
-  infoRowColumn: { marginBottom: 12 },
-  infoValueMultline: { fontSize: 13, color: "#1E293B", fontWeight: "500", marginTop: 4, lineHeight: 20 },
-  cardDivider: { height: 1, backgroundColor: "#F1F5F9", marginVertical: 12 },
-  resultsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  resultItem: { width: "48%", backgroundColor: "#F8FAFC", padding: 12, borderRadius: 8, marginBottom: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderColor: "#F1F5F9" },
-  resultSubject: { fontSize: 12, color: "#475569", flex: 1, marginRight: 8 },
-  resultGrade: { fontSize: 14, fontWeight: "bold" },
-  guardianRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
-  guardianLabel: { fontSize: 13, color: "#64748B", flex: 1 },
-  guardianValue: { fontSize: 13, color: "#1E293B", fontWeight: "500", flex: 2, textAlign: "right" },
-  photoEditContainer: { alignItems: "center", marginBottom: 30, marginTop: 10 },
-  largeAvatar: { width: 100, height: 100, borderRadius: 20, backgroundColor: "#3B82F6", justifyContent: "center", alignItems: "center", overflow: "hidden" },
-  largeAvatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  largeAvatarText: { fontSize: 36, fontWeight: "bold", color: "#FFFFFF" },
-  cameraBadge: { position: "absolute", bottom: 0, right: -10, backgroundColor: "#1E293B", width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: "#F8FAFC" },
-  changePhotoText: { marginTop: 12, fontSize: 14, fontWeight: "600", color: "#2563EB" },
-  inputGroup: { marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: "bold", color: "#1E293B", marginBottom: 8 },
-  input: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 12, padding: 16, fontSize: 14, color: "#1E293B" },
-  textArea: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 12, padding: 16, fontSize: 14, color: "#1E293B", minHeight: 80 },
-  infoBox: { flexDirection: "row", backgroundColor: "#EFF6FF", padding: 16, borderRadius: 12, marginTop: 10 },
-  infoBoxText: { flex: 1, fontSize: 13, color: "#1E40AF", lineHeight: 20 },
-  logoutButton: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 10, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2" },
-  logoutButtonText: { color: "#EF4444", fontSize: 15, fontWeight: "bold" },
-  resumeActionRow: { flexDirection: "row", gap: 12, marginBottom: 20 },
-  resumePrimaryBtn: { flex: 1, flexDirection: "row", backgroundColor: "#2563EB", paddingVertical: 14, borderRadius: 12, justifyContent: "center", alignItems: "center", elevation: 4 },
-  resumePrimaryBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "bold" },
-  resumeSecondaryBtn: { flex: 1, flexDirection: "row", backgroundColor: "#EFF6FF", paddingVertical: 14, borderRadius: 12, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#BFDBFE" },
-  resumeSecondaryBtnText: { color: "#2563EB", fontSize: 14, fontWeight: "bold" },
-  resumeDocumentCard: { backgroundColor: "#FFFFFF", borderRadius: 8, padding: 24, elevation: 5, minHeight: 400 },
-  docHeaderName: { fontSize: 22, fontWeight: "900", color: "#0F172A", textAlign: "center", marginBottom: 4, textTransform: "uppercase" },
-  docHeaderContact: { fontSize: 11, color: "#475569", textAlign: "center", marginBottom: 16 },
-  docDivider: { height: 2, backgroundColor: "#1E293B", marginBottom: 16 },
-  docSectionTitle: { fontSize: 12, fontWeight: "bold", color: "#1E293B", marginBottom: 8, marginTop: 16, letterSpacing: 1 },
-  docSubhead: { fontSize: 13, fontWeight: "bold", color: "#334155" },
-  docDateText: { fontSize: 11, color: "#64748B", marginBottom: 6, fontStyle: "italic" },
-  docText: { fontSize: 12, color: "#334155", lineHeight: 20, marginBottom: 4 },
-  sectionHeaderGroup: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  sectionTitle: { fontSize: 16, fontWeight: "bold", color: "#1E293B", marginLeft: 8 },
-  uploadBox: { backgroundColor: "#F8FAFC", borderWidth: 2, borderColor: "#CBD5E1", borderStyle: "dashed", borderRadius: 16, padding: 24, alignItems: "center", marginBottom: 24 },
-  uploadIconContainer: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#EFF6FF", justifyContent: "center", alignItems: "center", marginBottom: 12 },
-  uploadTitle: { fontSize: 16, fontWeight: "600", color: "#1E293B", marginBottom: 4 },
-  uploadSubtitle: { fontSize: 13, color: "#64748B", marginBottom: 16 },
-  browseButton: { backgroundColor: "#1E293B", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  browseButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "bold" },
+  avatarText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
+  greeting: { fontSize: 20, fontWeight: "bold", color: "#1E293B", marginBottom: 2 },
+  dateText: { fontSize: 10, fontWeight: "700", color: "#64748B", letterSpacing: 0.5 },
+  notificationBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#FFFFFF", justifyContent: "center", alignItems: "center", elevation: 2 },
+  notificationDot: { position: "absolute", top: 10, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: "#EF4444", borderWidth: 1.5, borderColor: "#FFFFFF" },
+  attendanceCard: { backgroundColor: "#FFFFFF", borderRadius: 20, padding: 20, marginBottom: 30, elevation: 3 },
+  sectionSubtitle: { fontSize: 14, fontWeight: "600", color: "#475569", marginBottom: 8 },
+  attendanceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  attendanceLeft: { flexDirection: "row", alignItems: "baseline" },
+  attendancePercentage: { fontSize: 36, fontWeight: "900", color: "#2563EB", marginRight: 8 },
+  attendanceStatus: { fontSize: 14, fontWeight: "700", color: "#16A34A" },
+  attendanceFooter: { fontSize: 12, color: "#94A3B8" },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: "bold", color: "#1E293B" },
+  linkText: { fontSize: 14, fontWeight: "600", color: "#3B82F6" },
+  subjectsScroll: { paddingBottom: 10, gap: 16 },
+  subjectCard: { width: width * 0.4, borderRadius: 16, padding: 16, marginRight: 16 },
+  subjectIconBox: { width: 48, height: 48, borderRadius: 12, justifyContent: "center", alignItems: "center", marginBottom: 16 },
+  subjectCardTitle: { fontSize: 15, fontWeight: "bold", color: "#1E293B", marginBottom: 4 },
+  subjectCardTeacher: { fontSize: 12, color: "#64748B" },
+  gradeCard: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, marginBottom: 12, elevation: 2 },
+  gradeInfoLeft: { flexDirection: "row", alignItems: "center" },
+  gradeIconContainer: { width: 44, height: 44, borderRadius: 12, justifyContent: "center", alignItems: "center", marginRight: 12 },
+  subjectName: { fontSize: 15, fontWeight: "bold", color: "#1E293B", marginBottom: 2 },
+  assessmentType: { fontSize: 12, color: "#94A3B8" },
+  gradeInfoRight: { flexDirection: "row", alignItems: "center" },
+  gradeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  gradeBadgeText: { fontWeight: "800", fontSize: 14 },
+  internshipScroll: { paddingBottom: 20, gap: 16 },
+  internshipCard: { width: width * 0.65, borderRadius: 20, padding: 20, marginRight: 16 },
+  internshipTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
+  companyLogoPlaceholder: { width: 40, height: 40, borderRadius: 8, backgroundColor: "#0F172A", justifyContent: "center", alignItems: "center" },
+  companyInitial: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
+  typeBadge: { backgroundColor: "#3B82F6", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  typeBadgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "bold" },
+  internshipTitle: { fontSize: 16, fontWeight: "bold", color: "#1E293B", marginBottom: 4 },
+  internshipCompany: { fontSize: 12, color: "#64748B", marginBottom: 20 },
+  applyButton: { backgroundColor: "#2563EB", paddingVertical: 12, borderRadius: 10, alignItems: "center" },
+  applyButtonText: { color: "#FFFFFF", fontWeight: "bold", fontSize: 14 },
+  modalContainer: { flex: 1, backgroundColor: "#F8FAFC" },
+  modalScrollContent: { padding: 20, paddingBottom: 60 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 50 : 40, paddingBottom: 16, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E2E8F0" },
+  modalBackButton: { padding: 8, marginLeft: -8, width: 36 },
+  modalHeaderTitle: { fontSize: 18, fontWeight: "bold", color: "#1E293B", flex: 1, textAlign: "center" },
+  subjectBanner: { flexDirection: "row", alignItems: "center", padding: 20, borderRadius: 16, marginBottom: 24 },
+  bannerIconBox: { width: 60, height: 60, borderRadius: 16, justifyContent: "center", alignItems: "center", marginRight: 16 },
+  bannerTitle: { fontSize: 18, fontWeight: "bold", color: "#1E293B", marginBottom: 4 },
+  bannerTeacher: { fontSize: 13, color: "#475569" },
+  materialSection: { marginBottom: 24 },
+  materialSectionHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  materialSectionTitle: { fontSize: 16, fontWeight: "bold", color: "#1E293B", marginLeft: 8 },
+  materialItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", padding: 16, borderRadius: 12, marginBottom: 8, elevation: 1 },
+  materialItemIconBox: { width: 40, height: 40, borderRadius: 10, backgroundColor: "#FEF2F2", justifyContent: "center", alignItems: "center", marginRight: 12 },
+  materialItemInfo: { flex: 1, marginRight: 12 },
+  materialItemTitle: { fontSize: 14, fontWeight: "600", color: "#1E293B", marginBottom: 4 },
+  materialItemSub: { fontSize: 12, color: "#64748B" },
+  downloadButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#EFF6FF", justifyContent: "center", alignItems: "center" },
+  actionIconButton: { padding: 4 },
+  statsRow: { flexDirection: "row", gap: 10, marginBottom: 24 },
+  statCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, elevation: 2 },
+  statLabel: { fontSize: 12, fontWeight: "600", color: "#64748B", marginBottom: 8 },
+  statValueRow: { flexDirection: "row", alignItems: "baseline", gap: 6 },
+  statValue: { fontSize: 24, fontWeight: "900", color: "#1E293B" },
+  statTrend: { fontSize: 12, fontWeight: "bold", color: "#16A34A" },
+  calendarWidget: { backgroundColor: "#FFFFFF", borderRadius: 20, padding: 20, marginBottom: 24, elevation: 3 },
+  calendarHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  calendarMonth: { fontSize: 16, fontWeight: "bold", color: "#1E293B" },
+  calendarGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  calendarCell: { width: `${100 / 7}%`, alignItems: "center", marginBottom: 16 },
+  dayNumberCircle: { width: 30, height: 30, borderRadius: 15, justifyContent: "center", alignItems: "center", marginBottom: 4 },
+  dayNumberSelected: { backgroundColor: "#DBEAFE" },
+  dayNumberText: { fontSize: 14, fontWeight: "700", color: "#1E293B" },
+  dayNumberPrev: { color: "#CBD5E1" },
+  dayNumberTextSelected: { color: "#2563EB" },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
 });
