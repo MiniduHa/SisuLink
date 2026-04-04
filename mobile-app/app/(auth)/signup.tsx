@@ -13,7 +13,6 @@ import {
 import { FontAwesome6 } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
-
 const API_URL = "http://172.20.10.7:5000/api/auth/register";
 
 const CustomInput = ({ label, ...props }: any) => (
@@ -74,8 +73,6 @@ const CustomCheckbox = ({ label, isChecked, onChange }: any) => (
   </TouchableOpacity>
 );
 
-
-
 export default function SignupScreen() {
   const router = useRouter();
   
@@ -106,7 +103,6 @@ export default function SignupScreen() {
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-
   const [childIds, setChildIds] = useState<string[]>([""]);
 
   const updateChildId = (text: string, index: number) => {
@@ -130,22 +126,26 @@ export default function SignupScreen() {
       return;
     }
 
-    // Allow both Student and Parent to proceed
-    if (role !== "Student" && role !== "Parent") {
+    // UPDATED: Now allows Student, Parent, and Teacher to proceed
+    if (role !== "Student" && role !== "Parent" && role !== "Teacher" && role !== "Industry") {
       Alert.alert("Coming Soon", `Registration for ${role} is currently being developed.`);
+      return;
+    }
+
+    // Require Teacher/Industry to agree to terms
+    if ((role === "Teacher" || role === "Industry") && !agreeTerms) {
+      Alert.alert("Error", "You must agree to the Terms of Service to register.");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // 1. Build the base data that everyone has
       let payload: any = {
         role: role,
         email: email.toLowerCase().trim(),
         password: password,
       };
-
       
       if (role === "Student") {
         payload.first_name = firstName;
@@ -155,10 +155,16 @@ export default function SignupScreen() {
       } else if (role === "Parent") {
         payload.full_name = fullName;
         payload.phone_number = phone;
-       
         payload.child_student_ids = childIds.filter(id => id.trim() !== "");
+      } else if (role === "Teacher") {
+        // UPDATED: Add Teacher specific payload fields
+        payload.full_name = fullName;
+        payload.phone_number = phone;
+        payload.staff_id = staffId;
+        payload.department = department;
+        payload.medium = medium;
+        payload.school_name = school;
       }
-
       
       const response = await fetch(API_URL, {
         method: "POST",
@@ -208,7 +214,6 @@ export default function SignupScreen() {
             setAgreeTerms(false);
           }} 
         />
-
         
         {role === "Student" && (
           <>
@@ -232,7 +237,6 @@ export default function SignupScreen() {
             <CustomInput label="Full Name" placeholder="Enter your full name" value={fullName} onChangeText={setFullName} />
             <CustomInput label="Email Address" placeholder="your@email.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
             <CustomInput label="Phone Number" placeholder="e.g. +94 77 123 4567" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-            
             
             <View style={styles.dynamicListContainer}>
               {childIds.map((id, index) => (
@@ -284,11 +288,9 @@ export default function SignupScreen() {
           </>
         )}
 
-        {/* Shared Passwords Fields */}
         <CustomInput label="Create Password" placeholder="••••••••" value={password} onChangeText={setPassword} secureTextEntry />
         <CustomInput label="Confirm Password" placeholder="••••••••" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
 
-        {/* Conditional Checkboxes */}
         {role === "Teacher" && (
           <CustomCheckbox label="I agree to the School IT Policy and Terms of Service" isChecked={agreeTerms} onChange={setAgreeTerms} />
         )}
@@ -297,7 +299,6 @@ export default function SignupScreen() {
           <CustomCheckbox label="I agree to the IT Policy and Terms of Service" isChecked={agreeTerms} onChange={setAgreeTerms} />
         )}
 
-        {/* Shared Buttons */}
         <TouchableOpacity 
           style={[styles.createButton, isLoading && { opacity: 0.7 }]} 
           onPress={handleCreateAccount} 
@@ -337,14 +338,11 @@ const styles = StyleSheet.create({
   dropdownItem: { paddingVertical: 12, paddingHorizontal: 16 },
   dropdownItemText: { fontSize: 14, color: "#64748B" },
   dropdownItemActive: { color: "#2563EB", fontWeight: "bold" },
-  
-  // Dynamic List Styles
   dynamicListContainer: { marginBottom: 8 },
   dynamicRow: { flexDirection: "row", alignItems: "flex-start" },
   removeButton: { padding: 16, backgroundColor: "#FEF2F2", borderRadius: 12, justifyContent: "center", alignItems: "center", marginLeft: 12, marginTop: 22, borderWidth: 1, borderColor: "#FECACA" },
   addButton: { flexDirection: "row", alignItems: "center", paddingVertical: 8, marginBottom: 16 },
   addButtonText: { color: "#2563EB", fontSize: 14, fontWeight: "600", marginLeft: 8 },
-
   checkboxContainer: { flexDirection: "row", alignItems: "center", marginBottom: 20, marginTop: 4 },
   checkbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: "#CBD5E1", justifyContent: "center", alignItems: "center", marginRight: 10 },
   checkboxChecked: { backgroundColor: "#2563EB", borderColor: "#2563EB" },

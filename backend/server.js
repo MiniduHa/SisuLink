@@ -24,7 +24,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // --- ROUTES ---
 
-// 1. REGISTER ROUTE (Handles both Students and Parents)
+// 1. REGISTER ROUTE (Handles Students, Parents, AND Teachers)
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { role, email, password } = req.body;
@@ -39,7 +39,7 @@ app.post('/api/auth/register', async (req, res) => {
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, first_name, last_name, email`,
         [first_name, last_name, email, hashedPassword, grade_level, index_number]
       );
-      return res.status(201).json({ message: "Student registered successfully! ", user: result.rows[0] });
+      return res.status(201).json({ message: "Student registered successfully!", user: result.rows[0] });
     } 
     
     else if (role === 'Parent') {
@@ -49,31 +49,43 @@ app.post('/api/auth/register', async (req, res) => {
          VALUES ($1, $2, $3, $4, $5) RETURNING id, full_name, email`,
         [full_name, email, phone_number, hashedPassword, child_student_ids]
       );
-      return res.status(201).json({ message: "Parent registered successfully! ", user: result.rows[0] });
+      return res.status(201).json({ message: "Parent registered successfully!", user: result.rows[0] });
     } 
+    
+    else if (role === 'Teacher') {
+      const { full_name, phone_number, staff_id, department, medium, school_name } = req.body;
+      const result = await db.query(
+        `INSERT INTO teachers (full_name, email, phone_number, password, staff_id, department, medium, school_name) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, full_name, email`,
+        [full_name, email, phone_number, hashedPassword, staff_id, department, medium, school_name]
+      );
+      return res.status(201).json({ message: "Teacher registered successfully!", user: result.rows[0] });
+    }
     
     else {
       return res.status(400).json({ error: "Invalid role selected." });
     }
 
   } catch (error) {
-    console.error(" Registration Error:", error.message);
-    if (error.code === '23505') return res.status(400).json({ error: "Email already exists." });
+    console.error("Registration Error:", error.message);
+    if (error.code === '23505') return res.status(400).json({ error: "Email or Staff ID already exists." });
     res.status(500).json({ error: "Server error during registration." });
   }
 });
 
-// 2. LOGIN ROUTE (UPDATED to handle Students AND Parents)
+// 2. LOGIN ROUTE (UPDATED TO HANDLE TEACHERS!)
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password, role } = req.body;
     let result;
 
-    // Check which table to look in based on the role sent from the mobile app
+    // Check which table to look in based on the role
     if (role === 'Parent') {
       result = await db.query('SELECT * FROM parents WHERE email = $1', [email.toLowerCase().trim()]);
+    } else if (role === 'Teacher') {
+      // NEW: Tell it to check the teachers table!
+      result = await db.query('SELECT * FROM teachers WHERE email = $1', [email.toLowerCase().trim()]);
     } else {
-      // Default to checking students table (keeps your old student login working)
       result = await db.query('SELECT * FROM students WHERE email = $1', [email.toLowerCase().trim()]);
     }
 
@@ -95,6 +107,18 @@ app.post('/api/auth/login', async (req, res) => {
           child_student_ids: user.child_student_ids
         }
       });
+    } else if (role === 'Teacher') {
+      // NEW: Send back teacher data
+      res.json({
+        message: "Login successful!",
+        user: {
+          id: user.id,
+          full_name: user.full_name,
+          email: user.email,
+          staff_id: user.staff_id,
+          profile_photo_url: user.profile_photo_url
+        }
+      });
     } else {
       res.json({
         message: "Login successful!",
@@ -109,12 +133,12 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error(" Login Error:", error.message);
+    console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error during login." });
   }
 });
 
-// 3. UPLOAD PROFILE PHOTO ROUTE (Unchanged)
+// 3. UPLOAD PROFILE PHOTO ROUTE 
 app.post('/api/profile/upload-avatar', upload.single('photo'), async (req, res) => {
   try {
     const { studentId } = req.body;
@@ -146,12 +170,12 @@ app.post('/api/profile/upload-avatar', upload.single('photo'), async (req, res) 
     res.json({ message: "Photo uploaded successfully", photoUrl: publicUrl });
 
   } catch (error) {
-    console.error(" Upload Error:", error.message);
+    console.error("Upload Error:", error.message);
     res.status(500).json({ error: "Server error during photo upload." });
   }
 });
 
-// 4. FETCH LATEST PROFILE DATA ROUTE (Unchanged)
+// 4. FETCH LATEST STUDENT PROFILE DATA ROUTE 
 app.get('/api/profile/:studentId', async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -165,7 +189,7 @@ app.get('/api/profile/:studentId', async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error(" Fetch Profile Error:", error.message);
+    console.error("Fetch Profile Error:", error.message);
     res.status(500).json({ error: "Server error fetching profile." });
   }
 });
@@ -184,7 +208,7 @@ app.get('/api/parents/:email', async (req, res) => {
 
     res.json({ user: result.rows[0] });
   } catch (error) {
-    console.error(" Fetch Parent Error:", error.message);
+    console.error("Fetch Parent Error:", error.message);
     res.status(500).json({ error: "Server error fetching parent profile." });
   }
 });
@@ -205,7 +229,7 @@ app.put('/api/parents/update', async (req, res) => {
 
     res.json({ message: "Profile updated successfully", user: result.rows[0] });
   } catch (error) {
-    console.error(" Update Parent Error:", error.message);
+    console.error("Update Parent Error:", error.message);
     res.status(500).json({ error: "Server error updating parent profile." });
   }
 });
@@ -213,5 +237,5 @@ app.put('/api/parents/update', async (req, res) => {
 // --- START THE SERVER ---
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(` Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
