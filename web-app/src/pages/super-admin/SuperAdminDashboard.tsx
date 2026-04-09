@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Users, UserCheck, TrendingUp, CheckCircle, XCircle, Clock, Eye, Mail, Ban, X, Phone, Calendar as CalendarIcon } from 'lucide-react';
+import { Building2, Users, UserCheck, TrendingUp, CheckCircle, XCircle, Clock, Eye, Mail, X, Phone, Calendar as CalendarIcon } from 'lucide-react';
 
 const stats = [
   { title: "Total Schools", value: "12", icon: Building2, color: "bg-blue-500" },
@@ -49,13 +49,17 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  const handleDecline = (schoolId: number) => {
+  const handleDeclinePending = (schoolId: number) => {
     setPendingApprovals(pendingApprovals.filter(s => s.id !== schoolId));
   };
 
-  const handleSuspend = (schoolId: number) => {
+  // --- NEW ACTION LOGIC: Toggle Active/Declined ---
+  const handleStatusToggle = (schoolId: number, currentStatus: string) => {
+    // If it's Active, make it Declined. Otherwise, make it Active.
+    const newStatus = currentStatus === 'Active' ? 'Declined' : 'Active';
+    
     setRecentSchools(recentSchools.map(school => 
-      school.id === schoolId ? { ...school, status: "Suspended" } : school
+      school.id === schoolId ? { ...school, status: newStatus } : school
     ));
   };
 
@@ -110,7 +114,7 @@ export default function SuperAdminDashboard() {
                       <CheckCircle size={16} /> Approve
                     </button>
                     <button 
-                      onClick={() => handleDecline(school.id)}
+                      onClick={() => handleDeclinePending(school.id)}
                       className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 py-1.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors border border-red-200"
                     >
                       <XCircle size={16} /> Decline
@@ -184,17 +188,17 @@ export default function SuperAdminDashboard() {
                           <Mail size={18} />
                         </button>
 
+                        {/* SMART TOGGLE BUTTON: Active / Decline */}
                         <button 
-                          onClick={() => handleSuspend(school.id)}
-                          disabled={school.status === 'Suspended'}
+                          onClick={() => handleStatusToggle(school.id, school.status)}
                           className={`p-1.5 rounded-md transition-colors ${
-                            school.status === 'Suspended' 
-                              ? 'text-slate-300 cursor-not-allowed' 
-                              : 'text-red-600 hover:bg-red-50'
+                            school.status === 'Active'
+                              ? 'text-red-600 hover:bg-red-50' 
+                              : 'text-emerald-600 hover:bg-emerald-50'
                           }`}
-                          title="Suspend School"
+                          title={school.status === 'Active' ? 'Decline School' : 'Activate School'}
                         >
-                          <Ban size={18} />
+                          {school.status === 'Active' ? <XCircle size={18} /> : <CheckCircle size={18} />}
                         </button>
                       </div>
                     </td>

@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Search, Plus, Building2, Mail, Phone, X, LayoutGrid, Users, User, Lock, Eye, EyeOff, Ban, UserCheck, Calendar as CalendarIcon } from 'lucide-react';
+import { Search, Plus, Building2, Mail, Phone, X, LayoutGrid, Users, User, Lock, Eye, EyeOff, CheckCircle, XCircle, UserCheck, Calendar as CalendarIcon } from 'lucide-react';
 
-// Extended Mock Data (Now includes 'students' and 'joined' for the view modal)
+// Extended Mock Data (Suspended replaced with Declined)
 const initialSchools = [
   { id: 'SCH-001', name: "S. Thomas' College", contact: "Principal Perera", email: "admin@stc.edu", phone: "+94 11 234 5678", status: "Active", students: 1250, joined: "Oct 12, 2026" },
   { id: 'SCH-002', name: "Royal College", contact: "Principal Silva", email: "info@royal.edu", phone: "+94 11 987 6543", status: "Active", students: 2100, joined: "Oct 15, 2026" },
   { id: 'SCH-003', name: "Gateway College", contact: "Admin Fernando", email: "hello@gateway.lk", phone: "+94 11 555 4444", status: "Pending", students: 0, joined: "Pending" },
-  { id: 'SCH-004', name: "Lyceum International", contact: "Mrs. Jayawardena", email: "admin@lyceum.lk", phone: "+94 11 222 3333", status: "Suspended", students: 3200, joined: "Jan 10, 2026" },
+  { id: 'SCH-004', name: "Lyceum International", contact: "Mrs. Jayawardena", email: "admin@lyceum.lk", phone: "+94 11 222 3333", status: "Declined", students: 3200, joined: "Jan 10, 2026" },
   { id: 'SCH-005', name: "Fake School Academy", contact: "John Doe", email: "scam@fake.com", phone: "+94 77 000 0000", status: "Declined", students: 0, joined: "Declined" },
 ];
 
@@ -14,12 +14,11 @@ export default function ManageSchools() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   
-  // Make schools editable in state so we can suspend them
   const [schools, setSchools] = useState(initialSchools);
 
   // --- MODAL STATES ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [selectedSchool, setSelectedSchool] = useState<any | null>(null); // For the View Profile modal
+  const [selectedSchool, setSelectedSchool] = useState<any | null>(null); 
   
   // Add School Form State
   const [showPassword, setShowPassword] = useState(false);
@@ -36,10 +35,13 @@ export default function ManageSchools() {
     return matchesSearch && matchesStatus;
   });
 
-  // --- ACTION LOGIC ---
-  const handleSuspend = (schoolId: string) => {
+  // --- NEW ACTION LOGIC: Toggle Active/Declined ---
+  const handleStatusToggle = (schoolId: string, currentStatus: string) => {
+    // If it's Active, make it Declined. Otherwise, make it Active.
+    const newStatus = currentStatus === 'Active' ? 'Declined' : 'Active';
+    
     setSchools(schools.map(school => 
-      school.id === schoolId ? { ...school, status: "Suspended" } : school
+      school.id === schoolId ? { ...school, status: newStatus } : school
     ));
   };
 
@@ -92,7 +94,6 @@ export default function ManageSchools() {
           <option value="all">All Statuses</option>
           <option value="active">Active</option>
           <option value="pending">Pending</option>
-          <option value="suspended">Suspended</option>
           <option value="declined">Declined</option>
         </select>
       </div>
@@ -136,7 +137,6 @@ export default function ManageSchools() {
                     <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                       school.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 
                       school.status === 'Pending' ? 'bg-blue-100 text-blue-700' : 
-                      school.status === 'Suspended' ? 'bg-amber-100 text-amber-700' : 
                       'bg-red-100 text-red-700'
                     }`}>
                       {school.status}
@@ -162,17 +162,17 @@ export default function ManageSchools() {
                         <Mail size={18} />
                       </button>
 
+                      {/* SMART TOGGLE BUTTON: Active / Decline */}
                       <button 
-                        onClick={() => handleSuspend(school.id)}
-                        disabled={school.status === 'Suspended' || school.status === 'Declined'}
+                        onClick={() => handleStatusToggle(school.id, school.status)}
                         className={`p-1.5 rounded-md transition-colors ${
-                          (school.status === 'Suspended' || school.status === 'Declined')
-                            ? 'text-slate-300 cursor-not-allowed' 
-                            : 'text-red-600 hover:bg-red-50'
+                          school.status === 'Active'
+                            ? 'text-red-600 hover:bg-red-50' 
+                            : 'text-emerald-600 hover:bg-emerald-50'
                         }`}
-                        title="Suspend School"
+                        title={school.status === 'Active' ? 'Decline School' : 'Activate School'}
                       >
-                        <Ban size={18} />
+                        {school.status === 'Active' ? <XCircle size={18} /> : <CheckCircle size={18} />}
                       </button>
                     </div>
                   </td>
@@ -328,7 +328,7 @@ export default function ManageSchools() {
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                     selectedSchool.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 
                     selectedSchool.status === 'Pending' ? 'bg-blue-100 text-blue-700' :
-                    selectedSchool.status === 'Suspended' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                    'bg-red-100 text-red-700'
                   }`}>
                     {selectedSchool.status}
                   </span>
