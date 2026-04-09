@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Lock, Mail } from 'lucide-react';
 
@@ -13,7 +13,6 @@ export default function AdminLogin() {
     setError('');
 
     // --- TEMPORARY ROUTING LOGIC FOR TESTING ---
-    // Later, this will fetch from your Node.js backend
     if (email === 'super@admin.com' && password === 'admin123') {
       navigate('/super-admin');
     } else if (email === 'school@admin.com' && password === 'admin123') {
@@ -24,80 +23,90 @@ export default function AdminLogin() {
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.leftPanel}>
-        <div style={styles.logoBox}>
-          <GraduationCap size={48} color="#FFFFFF" />
+    <div className="flex h-screen w-screen font-sans">
+      
+      {/* Left Panel - Branding (Hidden on mobile) */}
+      <div className="hidden md:flex flex-1 bg-blue-600 flex-col justify-center items-center text-white p-8">
+        <div className="bg-white/20 p-6 rounded-2xl mb-6">
+          <GraduationCap size={56} color="#FFFFFF" />
         </div>
-        <h1 style={styles.brandTitle}>School Connect</h1>
-        <p style={styles.brandSubtitle}>Unified Education Management System</p>
+        <h1 className="text-4xl font-bold mb-2">School Connect</h1>
+        <p className="text-blue-100 text-lg">Unified Education Management System</p>
       </div>
 
-      <div style={styles.rightPanel}>
-        <div style={styles.loginCard}>
-          <h2 style={styles.loginTitle}>Admin Portal</h2>
-          <p style={styles.loginSubtitle}>Sign in to manage your institution</p>
+      {/* Right Panel - Login Form */}
+      <div className="flex-1 bg-slate-50 flex justify-center items-center p-4">
+        <div className="bg-white p-8 sm:p-12 rounded-2xl shadow-xl w-full max-w-md">
+          
+          <div className="mb-8">
+            <h2 className="text-3xl font-bold text-slate-800 mb-2">Admin Portal</h2>
+            <p className="text-slate-500">Sign in to manage your institution</p>
+          </div>
 
-          {error && <div style={styles.errorBox}>{error}</div>}
+          {error && (
+            <div className="bg-red-50 text-red-500 p-3 rounded-lg mb-6 text-sm border border-red-200">
+              {error}
+            </div>
+          )}
 
-          <form onSubmit={handleLogin} style={styles.form}>
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Email Address</label>
-              <div style={styles.inputWrapper}>
-                <Mail size={18} color="#9CA3AF" style={styles.inputIcon} />
+          <form onSubmit={handleLogin} className="flex flex-col gap-5">
+            
+            {/* Email Input */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-slate-600">Email Address</label>
+              <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                <Mail size={18} className="text-slate-400 mr-3" />
                 <input 
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@school.edu"
-                  style={styles.input}
+                  className="bg-transparent border-none outline-none w-full text-slate-800"
                   required
                 />
               </div>
             </div>
 
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Password</label>
-              <div style={styles.inputWrapper}>
-                <Lock size={18} color="#9CA3AF" style={styles.inputIcon} />
+            {/* Password Input */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-slate-600">Password</label>
+              <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                <Lock size={18} className="text-slate-400 mr-3" />
                 <input 
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  style={styles.input}
+                  className="bg-transparent border-none outline-none w-full text-slate-800"
                   required
                 />
               </div>
             </div>
 
-            <button type="submit" style={styles.submitBtn}>
+            {/* Submit Button */}
+            <button 
+              type="submit" 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors mt-2 shadow-sm"
+            >
               Sign In to Dashboard
             </button>
+
+            {/* Registration Link */}
+            <div className="mt-4 text-center text-sm text-slate-600">
+              Is your school not registered yet?{' '}
+              <button 
+                type="button"
+                onClick={() => navigate('/register')} 
+                className="text-blue-600 font-semibold hover:underline transition-all"
+              >
+                Apply for access
+              </button>
+            </div>
+
           </form>
         </div>
       </div>
+
     </div>
   );
 }
-
-// React Web inline styles (similar to React Native StyleSheet)
-const styles = {
-  container: { display: 'flex', height: '100vh', width: '100vw', fontFamily: 'system-ui, sans-serif' },
-  leftPanel: { flex: 1, backgroundColor: '#2563EB', display: 'flex', flexDirection: 'column' as const, justifyContent: 'center', alignItems: 'center', color: 'white', padding: '2rem' },
-  logoBox: { backgroundColor: 'rgba(255,255,255,0.2)', padding: '1.5rem', borderRadius: '1rem', marginBottom: '1.5rem' },
-  brandTitle: { fontSize: '2.5rem', fontWeight: 'bold', margin: '0 0 0.5rem 0' },
-  brandSubtitle: { fontSize: '1.1rem', color: '#DBEAFE', margin: 0 },
-  rightPanel: { flex: 1, backgroundColor: '#F8FAFC', display: 'flex', justifyContent: 'center', alignItems: 'center' },
-  loginCard: { backgroundColor: 'white', padding: '3rem', borderRadius: '1rem', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', width: '100%', maxWidth: '400px' },
-  loginTitle: { fontSize: '1.75rem', fontWeight: 'bold', color: '#1E293B', margin: '0 0 0.5rem 0' },
-  loginSubtitle: { color: '#64748B', marginBottom: '2rem', margin: 0 },
-  errorBox: { backgroundColor: '#FEF2F2', color: '#EF4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.5rem', fontSize: '0.875rem', border: '1px solid #FECACA' },
-  form: { display: 'flex', flexDirection: 'column' as const, gap: '1.5rem' },
-  inputGroup: { display: 'flex', flexDirection: 'column' as const, gap: '0.5rem' },
-  label: { fontSize: '0.875rem', fontWeight: 600, color: '#475569' },
-  inputWrapper: { display: 'flex', alignItems: 'center', backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '0.5rem', padding: '0.75rem' },
-  inputIcon: { marginRight: '0.5rem' },
-  input: { border: 'none', backgroundColor: 'transparent', outline: 'none', width: '100%', fontSize: '0.95rem', color: '#1E293B' },
-  submitBtn: { backgroundColor: '#2563EB', color: 'white', border: 'none', padding: '0.875rem', borderRadius: '0.5rem', fontSize: '1rem', fontWeight: 600, cursor: 'pointer', marginTop: '0.5rem', transition: 'background-color 0.2s' }
-};
