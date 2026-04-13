@@ -1,20 +1,69 @@
-import { useState } from 'react';
-import { Search, Plus, Mail, Phone, X, Users, BookOpen, CheckCircle, XCircle, Eye } from 'lucide-react';
+import { useState} from 'react';
+import { Search, Plus, Mail, Phone, X, Users, BookOpen, CheckCircle, XCircle, Eye, UserCheck, Briefcase, AlertCircle, MessageSquare, Send, AlignLeft, CalendarDays, MapPin, Edit3, Save, Trash2 } from 'lucide-react';
 
+// --- MOCK DATA ---
 const initialTeachers = [
-  { id: 'TCH-001', name: "Anura Fernando", department: "Science", email: "anura.f@school.edu", phone: "+94 77 123 4567", status: "Active", joined: "Jan 10, 2024" },
-  { id: 'TCH-002', name: "Kumari Perera", department: "Mathematics", email: "kumari.p@school.edu", phone: "+94 77 234 5678", status: "Active", joined: "Feb 15, 2024" },
-  { id: 'TCH-003', name: "Dinesh Silva", department: "Languages", email: "dinesh.s@school.edu", phone: "+94 77 345 6789", status: "On Leave", joined: "Mar 01, 2024" },
-  { id: 'TCH-004', name: "Malini Jayawardena", department: "Commerce", email: "malini.j@school.edu", phone: "+94 77 456 7890", status: "Active", joined: "Aug 20, 2025" },
+  { id: 'TCH-001', name: "Anura Fernando", department: "Science Section", subject: "Physics", medium: "English", email: "anura.f@school.edu", phone: "+94 77 123 4567", status: "Active", joined: "Jan 10, 2024" },
+  { id: 'TCH-002', name: "Kumari Perera", department: "O/L", subject: "Mathematics", medium: "Sinhala", email: "kumari.p@school.edu", phone: "+94 77 234 5678", status: "Active", joined: "Feb 15, 2024" },
+  { id: 'TCH-003', name: "Dinesh Silva", department: "O/L", subject: "English", medium: "English", email: "dinesh.s@school.edu", phone: "+94 77 345 6789", status: "On Leave", leaveReason: "Medical leave for 2 weeks (Dengue Recovery)", joined: "Mar 01, 2024" },
+  { id: 'TCH-004', name: "Malini Jayawardena", department: "Commerce Section", subject: "Accounting", medium: "English", email: "malini.j@school.edu", phone: "+94 77 456 7890", status: "Active", joined: "Aug 20, 2025" },
 ];
+
+const subjectOptions: Record<string, string[]> = {
+  "O/L": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Religion", "ICT", "Business & Accounting"],
+  "Science Section": ["Combined Mathematics", "Biology", "Physics", "Chemistry", "Agriculture"],
+  "Commerce Section": ["Accounting", "Business Studies", "Economics", "ICT"],
+  "Technology Section": ["Engineering Technology (ET)", "Bio Systems Technology (BST)", "Science for Technology (SFT)", "ICT"],
+  "Arts Section": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science"]
+};
+
+// --- MOCK TIMETABLE GENERATOR ---
+const generateMockTimetable = (subject: string) => {
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const periods = [
+    { id: 1, time: '08:00 - 08:40' }, { id: 2, time: '08:40 - 09:20' }, 
+    { id: 'break', time: '09:20 - 09:40', label: 'Interval' },
+    { id: 3, time: '09:40 - 10:20' }, { id: 4, time: '10:20 - 11:00' },
+    { id: 5, time: '11:00 - 11:40' }, { id: 6, time: '11:40 - 12:20' },
+    { id: 7, time: '12:20 - 01:00' }, { id: 8, time: '01:00 - 01:40' }
+  ];
+
+  return periods.map(period => {
+    if (period.id === 'break') return { ...period, isBreak: true };
+    const row: any = { ...period, isBreak: false, days: {} };
+    days.forEach(day => {
+      // 40% chance to have a class for mock data
+      if (Math.random() > 0.6) {
+        row.days[day] = { class: `Grade ${Math.floor(Math.random() * 4) + 10} - A`, subject: subject, room: `Room ${Math.floor(Math.random() * 100) + 100}` };
+      } else {
+        row.days[day] = null;
+      }
+    });
+    return row;
+  });
+};
 
 export default function ManageTeachers() {
   const [searchTerm, setSearchTerm] = useState('');
   const [deptFilter, setDeptFilter] = useState('all');
   const [teachers, setTeachers] = useState(initialTeachers);
 
-  // Modals
+  // Modals & Profile State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
+  const [activeProfileTab, setActiveProfileTab] = useState<'profile' | 'timetable'>('profile');
+  
+  // Timetable Editor State
+  const [timetableData, setTimetableData] = useState<any[]>([]);
+  const [isEditingTimetable, setIsEditingTimetable] = useState(false);
+  const [editingSlot, setEditingSlot] = useState<{ pIndex: number, day: string } | null>(null);
+  const [slotForm, setSlotForm] = useState({ class: '', subject: '', room: '' });
+
+  // Messaging State
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+  const [messageForm, setMessageForm] = useState({ recipientType: 'all', targetSection: '', targetTeacherId: '', subject: '', messageBody: '' });
+  
+  const [formData, setFormData] = useState({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '' });
   
   // Filter Logic
   const filteredTeachers = teachers.filter(teacher => {
@@ -26,6 +75,62 @@ export default function ManageTeachers() {
   const handleStatusToggle = (teacherId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
     setTeachers(teachers.map(t => t.id === teacherId ? { ...t, status: newStatus } : t));
+    if (selectedTeacher && selectedTeacher.id === teacherId) {
+      setSelectedTeacher({ ...selectedTeacher, status: newStatus });
+    }
+  };
+
+  const handleAddTeacher = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newTeacher = {
+      id: formData.staffId, name: formData.fullName, department: formData.department,
+      subject: formData.subject, medium: formData.medium, email: formData.email, phone: formData.phone,
+      status: "Active", joined: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    };
+    setTeachers([newTeacher, ...teachers]);
+    setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '' });
+    setIsAddModalOpen(false);
+  };
+
+  const openMessageModal = (type: string, teacherId?: string) => {
+    setMessageForm({ ...messageForm, recipientType: type, targetTeacherId: teacherId || '', targetSection: '', subject: '', messageBody: '' });
+    setIsMessageModalOpen(true);
+  };
+
+  // Open profile modal and initialize timetable
+  const handleViewProfile = (teacher: any) => {
+    setSelectedTeacher(teacher);
+    setActiveProfileTab('profile');
+    setIsEditingTimetable(false);
+    setTimetableData(generateMockTimetable(teacher.subject)); // Generate fresh mock data
+  };
+
+  // Timetable Edit Handlers
+  const handleSlotClick = (pIndex: number, day: string, currentData: any) => {
+    if (!isEditingTimetable) return;
+    setEditingSlot({ pIndex, day });
+    if (currentData) {
+      setSlotForm(currentData);
+    } else {
+      setSlotForm({ class: '', subject: selectedTeacher.subject, room: '' });
+    }
+  };
+
+  const handleSaveSlot = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSlot) return;
+    const newData = [...timetableData];
+    newData[editingSlot.pIndex].days[editingSlot.day] = { ...slotForm };
+    setTimetableData(newData);
+    setEditingSlot(null);
+  };
+
+  const handleClearSlot = () => {
+    if (!editingSlot) return;
+    const newData = [...timetableData];
+    newData[editingSlot.pIndex].days[editingSlot.day] = null;
+    setTimetableData(newData);
+    setEditingSlot(null);
   };
 
   return (
@@ -37,37 +142,29 @@ export default function ManageTeachers() {
           <h1 className="text-xl font-bold text-slate-800">Manage Teaching Staff</h1>
           <p className="text-sm text-slate-500 font-medium">Add, update, and manage teacher profiles and access.</p>
         </div>
-        <button 
-          onClick={() => setIsAddModalOpen(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-sm"
-        >
-          <Plus size={18} />
-          Add Teacher
-        </button>
+        <div className="flex w-full sm:w-auto gap-3">
+          <button onClick={() => openMessageModal('all')} className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm">
+            <MessageSquare size={18} /> Message Staff
+          </button>
+          <button onClick={() => setIsAddModalOpen(true)} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm">
+            <Plus size={18} /> Add Teacher
+          </button>
+        </div>
       </div>
 
       {/* Search and Filters */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4">
         <div className="flex-1 relative">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Search by teacher name or ID..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm"
-          />
+          <input type="text" placeholder="Search by teacher name or ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm" />
         </div>
-        <select 
-          value={deptFilter}
-          onChange={(e) => setDeptFilter(e.target.value)}
-          className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 text-slate-700 font-medium text-sm"
-        >
-          <option value="all">All Departments</option>
-          <option value="science">Science</option>
-          <option value="mathematics">Mathematics</option>
-          <option value="languages">Languages</option>
-          <option value="commerce">Commerce</option>
+        <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 text-slate-700 font-medium text-sm">
+          <option value="all">All Sections</option>
+          <option value="o/l">O/L</option>
+          <option value="science section">Science Section</option>
+          <option value="commerce section">Commerce Section</option>
+          <option value="technology section">Technology Section</option>
+          <option value="arts section">Arts Section</option>
         </select>
       </div>
 
@@ -88,13 +185,14 @@ export default function ManageTeachers() {
                 <tr key={teacher.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold border-2 border-white shadow-sm shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold border-2 border-white shadow-sm shrink-0 uppercase">
                         {teacher.name.split(' ').map(n => n[0]).join('')}
                       </div>
                       <div>
                         <p className="font-bold text-slate-800">{teacher.name}</p>
                         <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mt-0.5">
-                          <BookOpen size={12} className="text-blue-500" /> {teacher.department} • {teacher.id}
+                          <BookOpen size={12} className="text-blue-500" /> 
+                          <span className="font-semibold text-slate-700">{teacher.subject}</span> • {teacher.department} • {teacher.id}
                         </div>
                       </div>
                     </div>
@@ -117,16 +215,13 @@ export default function ManageTeachers() {
                   </td>
                   <td className="p-4">
                     <div className="flex items-center justify-center gap-2">
-                      <button className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="View Profile">
+                      <button onClick={() => handleViewProfile(teacher)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="View Profile & Timetable">
                         <Eye size={18} />
                       </button>
-                      <button 
-                        onClick={() => handleStatusToggle(teacher.id, teacher.status)}
-                        className={`p-1.5 rounded-md transition-colors ${
-                          teacher.status === 'Active' ? 'text-red-600 hover:bg-red-50' : 'text-emerald-600 hover:bg-emerald-50'
-                        }`}
-                        title={teacher.status === 'Active' ? 'Deactivate Teacher' : 'Activate Teacher'}
-                      >
+                      <button onClick={() => openMessageModal('individual', teacher.id)} className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors" title="Message Teacher">
+                        <MessageSquare size={18} />
+                      </button>
+                      <button onClick={() => handleStatusToggle(teacher.id, teacher.status)} className={`p-1.5 rounded-md transition-colors ${teacher.status === 'Active' ? 'text-red-400 hover:text-red-600 hover:bg-red-50' : 'text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50'}`} title={teacher.status === 'Active' ? 'Deactivate Teacher' : 'Activate Teacher'}>
                         {teacher.status === 'Active' ? <XCircle size={18} /> : <CheckCircle size={18} />}
                       </button>
                     </div>
@@ -136,17 +231,309 @@ export default function ManageTeachers() {
             </tbody>
           </table>
           {filteredTeachers.length === 0 && (
-            <div className="p-8 text-center text-slate-500">
-              No teachers found matching your filters.
-            </div>
+            <div className="p-8 text-center text-slate-500">No teachers found matching your filters.</div>
           )}
         </div>
       </div>
 
-      {/* --- ADD NEW TEACHER MODAL (UI Only) --- */}
+      {/* --- SMART MESSAGING MODAL (Unchanged) --- */}
+      {isMessageModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+           {/* ... (Kept identical to previous response to save space) ... */}
+           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+            <div className="bg-slate-50 border-b border-slate-100 p-5 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-purple-100 text-purple-600 p-2 rounded-lg"><Send size={20} /></div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">Compose Message</h2>
+                  <p className="text-xs text-slate-500 font-medium">Send an internal message to teaching staff</p>
+                </div>
+              </div>
+              <button onClick={() => setIsMessageModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-2 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+            <div className="p-6">
+              <form id="compose-message-form" onSubmit={(e) => { e.preventDefault(); setIsMessageModalOpen(false); }} className="space-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Send To</label>
+                  <select 
+                    value={messageForm.recipientType} 
+                    onChange={(e) => setMessageForm({...messageForm, recipientType: e.target.value, targetSection: '', targetTeacherId: ''})}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500 transition-all text-sm text-slate-800 font-medium"
+                  >
+                    <option value="all">Entire Teaching Staff</option>
+                    <option value="section">Specific Section</option>
+                    <option value="individual">Individual Teacher</option>
+                  </select>
+                </div>
+                {messageForm.recipientType === 'section' && (
+                  <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Select Section</label>
+                    <select required value={messageForm.targetSection} onChange={(e) => setMessageForm({...messageForm, targetSection: e.target.value})} className="w-full px-4 py-2.5 bg-purple-50 border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500 transition-all text-sm text-purple-900 font-medium">
+                      <option value="" disabled>Choose a section...</option>
+                      {Object.keys(subjectOptions).map((section) => (<option key={section} value={section}>{section} Teachers</option>))}
+                    </select>
+                  </div>
+                )}
+                {messageForm.recipientType === 'individual' && (
+                  <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Select Teacher</label>
+                    <select required value={messageForm.targetTeacherId} onChange={(e) => setMessageForm({...messageForm, targetTeacherId: e.target.value})} className="w-full px-4 py-2.5 bg-purple-50 border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500 transition-all text-sm text-purple-900 font-medium">
+                      <option value="" disabled>Choose a teacher...</option>
+                      {teachers.map((t) => (<option key={t.id} value={t.id}>{t.name} ({t.department})</option>))}
+                    </select>
+                  </div>
+                )}
+                <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-100">
+                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Message Subject</label>
+                  <input type="text" required placeholder="e.g. Urgent Update Regarding Timetable" value={messageForm.subject} onChange={(e) => setMessageForm({...messageForm, subject: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500 transition-all text-sm text-slate-800" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Message Details</label>
+                  <div className="relative">
+                    <AlignLeft size={16} className="absolute left-3 top-3 text-slate-400" />
+                    <textarea required placeholder="Type your message here..." rows={4} value={messageForm.messageBody} onChange={(e) => setMessageForm({...messageForm, messageBody: e.target.value})} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500 transition-all text-sm text-slate-800 resize-none" />
+                  </div>
+                </div>
+              </form>
+            </div>
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <button onClick={() => setIsMessageModalOpen(false)} className="px-4 py-2 text-slate-600 text-sm font-medium hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+              <button type="submit" form="compose-message-form" className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+                <Send size={16} /> Send Message
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- TEACHER PROFILE & TIMETABLE VIEW MODAL --- */}
+      {selectedTeacher && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="bg-slate-50 border-b border-slate-100 p-6 flex justify-between items-start shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-2xl font-bold border-4 border-white shadow-sm shrink-0 uppercase">
+                  {selectedTeacher.name.split(' ').map((n: string) => n[0]).join('')}
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800">{selectedTeacher.name}</h2>
+                  <p className="text-sm font-semibold text-slate-500">Staff ID: {selectedTeacher.id}</p>
+                  <span className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    selectedTeacher.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 
+                    selectedTeacher.status === 'On Leave' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {selectedTeacher.status}
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => {setSelectedTeacher(null); setIsEditingTimetable(false);}} className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-2 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex border-b border-slate-200 px-6 shrink-0 bg-white">
+              <button onClick={() => {setActiveProfileTab('profile'); setIsEditingTimetable(false);}} className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors ${activeProfileTab === 'profile' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                Profile Details
+              </button>
+              <button onClick={() => setActiveProfileTab('timetable')} className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeProfileTab === 'timetable' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                <CalendarDays size={16} /> Weekly Timetable
+              </button>
+            </div>
+
+            {/* Scrollable Content Area */}
+            <div className="p-6 overflow-y-auto flex-1 bg-white relative">
+              
+              {/* TAB 1: PROFILE DETAILS */}
+              {activeProfileTab === 'profile' && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  {selectedTeacher.status === 'On Leave' && (
+                    <div className="bg-amber-50 rounded-xl border border-amber-100 p-4">
+                      <h3 className="text-sm font-bold text-amber-800 mb-1 flex items-center gap-2">
+                        <AlertCircle size={16} /> Leave Information
+                      </h3>
+                      <p className="text-sm font-medium text-amber-800 mt-1 pl-6">
+                        {selectedTeacher.leaveReason || "Leave reason not specified."}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2 flex items-center gap-2">
+                      <Briefcase size={16} className="text-blue-500" /> Academic Profile
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Section</p>
+                        <p className="font-bold text-slate-700 mt-0.5 text-sm truncate">{selectedTeacher.department}</p>
+                      </div>
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subject</p>
+                        <p className="font-bold text-blue-700 mt-0.5 text-sm truncate">{selectedTeacher.subject}</p>
+                      </div>
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Medium</p>
+                        <p className="font-bold text-slate-700 mt-0.5 text-sm truncate">{selectedTeacher.medium}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2 flex items-center gap-2">
+                      <UserCheck size={16} className="text-emerald-500" /> Contact Information
+                    </h3>
+                    <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <Mail size={16} className="text-slate-400" />
+                        <div>
+                          <p className="text-xs text-slate-500 font-medium">Email Address</p>
+                          <p className="text-sm font-bold text-slate-800">{selectedTeacher.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Phone size={16} className="text-slate-400" />
+                        <div>
+                          <p className="text-xs text-slate-500 font-medium">Phone Number</p>
+                          <p className="text-sm font-bold text-slate-800">{selectedTeacher.phone}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: TIMETABLE */}
+              {activeProfileTab === 'timetable' && (
+                <div className="animate-in fade-in duration-300 flex flex-col h-full">
+                  
+                  {/* Timetable Header / Controls */}
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-sm font-bold text-slate-800">Master Schedule</h3>
+                    <button 
+                      onClick={() => setIsEditingTimetable(!isEditingTimetable)}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${
+                        isEditingTimetable 
+                          ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' 
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {isEditingTimetable ? <><Save size={16}/> Done Editing</> : <><Edit3 size={16}/> Edit Timetable</>}
+                    </button>
+                  </div>
+
+                  {/* The Grid */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse min-w-[700px]">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200">
+                            <th className="p-3 text-xs font-bold text-slate-500 uppercase tracking-wider border-r border-slate-200 w-24 text-center">Time</th>
+                            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => (
+                              <th key={day} className="p-3 text-xs font-bold text-slate-700 uppercase tracking-wider border-r border-slate-200 text-center w-1/5">{day}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {timetableData.map((row, pIndex) => (
+                            row.isBreak ? (
+                              <tr key={pIndex} className="bg-amber-50/50 border-b border-slate-100">
+                                <td className="p-2 text-xs font-semibold text-amber-700 text-center border-r border-slate-200 whitespace-nowrap">{row.time}</td>
+                                <td colSpan={5} className="p-2 text-xs font-bold text-amber-600 text-center uppercase tracking-[0.2em]">{row.label}</td>
+                              </tr>
+                            ) : (
+                              <tr key={pIndex} className="border-b border-slate-100">
+                                <td className="p-2 text-[10px] font-semibold text-slate-500 text-center border-r border-slate-200 whitespace-nowrap bg-slate-50">{row.time}</td>
+                                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => {
+                                  const slot = row.days[day];
+                                  return (
+                                    <td 
+                                      key={day} 
+                                      onClick={() => handleSlotClick(pIndex, day, slot)}
+                                      className={`p-1.5 border-r border-slate-100 last:border-none transition-all ${
+                                        isEditingTimetable ? 'cursor-pointer hover:bg-blue-50/50' : ''
+                                      }`}
+                                    >
+                                      {slot ? (
+                                        <div className={`bg-blue-50 border border-blue-100 rounded-lg p-2 h-full flex flex-col justify-center items-center text-center ${isEditingTimetable ? 'hover:border-blue-400 shadow-sm' : ''}`}>
+                                          <p className="text-xs font-bold text-blue-800">{slot.class}</p>
+                                          <p className="text-[10px] font-semibold text-blue-600 mt-0.5">{slot.subject}</p>
+                                          <div className="flex items-center gap-1 mt-1 text-[9px] font-medium text-slate-500">
+                                            <MapPin size={10} /> {slot.room}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className={`h-full min-h-[65px] flex items-center justify-center rounded-lg border-2 border-transparent ${isEditingTimetable ? 'border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-blue-500' : 'text-slate-300'}`}>
+                                          <span className={`text-[10px] font-medium ${isEditingTimetable ? 'font-bold' : ''}`}>
+                                            {isEditingTimetable ? '+ Add Class' : '- Free -'}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            )
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  
+                  {isEditingTimetable && (
+                     <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-2 text-blue-700 text-xs font-medium">
+                       <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                       <p>You are currently in Edit Mode. Click on any slot in the grid above to assign a class, modify the room, or mark it as a free period.</p>
+                     </div>
+                  )}
+
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- SLOT EDITOR MODAL (Only shows when clicking a slot in edit mode) --- */}
+      {editingSlot && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+              <div className="bg-slate-50 border-b border-slate-100 p-4 flex justify-between items-center">
+                <div>
+                  <h3 className="font-bold text-slate-800">Edit Schedule Slot</h3>
+                  <p className="text-xs font-medium text-slate-500">{editingSlot.day} • {timetableData[editingSlot.pIndex].time}</p>
+                </div>
+                <button onClick={() => setEditingSlot(null)} className="text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 p-1.5 rounded-full"><X size={16} /></button>
+              </div>
+              <div className="p-5">
+                <form id="slot-form" onSubmit={handleSaveSlot} className="space-y-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Class / Grade</label>
+                    <input type="text" required placeholder="e.g. Grade 10 - A" value={slotForm.class} onChange={(e) => setSlotForm({...slotForm, class: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-500" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Subject</label>
+                    <input type="text" required placeholder="e.g. Physics" value={slotForm.subject} onChange={(e) => setSlotForm({...slotForm, subject: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-500" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Room / Location</label>
+                    <input type="text" required placeholder="e.g. Lab 01" value={slotForm.room} onChange={(e) => setSlotForm({...slotForm, room: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-500" />
+                  </div>
+                </form>
+              </div>
+              <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+                <button type="button" onClick={handleClearSlot} className="text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={14}/> Clear Slot</button>
+                <div className="flex gap-2">
+                  <button onClick={() => setEditingSlot(null)} className="px-3 py-1.5 text-slate-600 text-xs font-bold hover:bg-slate-200 rounded-lg">Cancel</button>
+                  <button type="submit" form="slot-form" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow-sm">Save</button>
+                </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* --- ADD NEW TEACHER MODAL (Unchanged) --- */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="bg-slate-50 border-b border-slate-100 p-5 flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="bg-blue-100 text-blue-600 p-2 rounded-lg"><Users size={20} /></div>
@@ -158,16 +545,65 @@ export default function ManageTeachers() {
               <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-2 rounded-full transition-colors"><X size={20} /></button>
             </div>
             <div className="p-6">
-              <p className="text-sm text-slate-500 text-center py-8">Teacher registration form will go here...</p>
+              <form id="add-teacher-form" onSubmit={handleAddTeacher} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Full Name</label>
+                    <input type="text" required placeholder="e.g. John Doe" value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Staff ID</label>
+                    <input type="text" required placeholder="e.g. TCH-005" value={formData.staffId} onChange={(e) => setFormData({...formData, staffId: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Email Address</label>
+                    <input type="email" required placeholder="teacher@school.edu" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Phone Number</label>
+                    <input type="tel" required placeholder="+94 77 000 0000" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Department / Section</label>
+                    <select required value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value, subject: '' })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm text-slate-700">
+                      <option value="" disabled>Select Section</option>
+                      {Object.keys(subjectOptions).map((section) => (<option key={section} value={section}>{section}</option>))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Teaching Medium</label>
+                    <select required value={formData.medium} onChange={(e) => setFormData({...formData, medium: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm text-slate-700">
+                      <option value="" disabled>Select Medium</option>
+                      <option value="English">English</option>
+                      <option value="Sinhala">Sinhala</option>
+                      <option value="Tamil">Tamil</option>
+                    </select>
+                  </div>
+                </div>
+                {formData.department && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in duration-300">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Teaching Subject</label>
+                      <select required value={formData.subject} onChange={(e) => setFormData({...formData, subject: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm text-slate-700">
+                        <option value="" disabled>Select Subject</option>
+                        {subjectOptions[formData.department].map((subject) => (<option key={subject} value={subject}>{subject}</option>))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </form>
             </div>
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
               <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-slate-600 text-sm font-medium hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
-              <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Save Teacher</button>
+              <button type="submit" form="add-teacher-form" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">Save Teacher</button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }
