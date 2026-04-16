@@ -1,12 +1,34 @@
+import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Users, GraduationCap, BookOpen, CalendarDays, Bell, Settings, LogOut, Library } from 'lucide-react';
 
 export default function SchoolAdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [adminData, setAdminData] = useState<any>(null);
+
+  // Fetch data from local storage when the layout loads
+  useEffect(() => {
+    const storedUser = localStorage.getItem('schoolConnectUser');
+    if (storedUser) {
+      setAdminData(JSON.parse(storedUser));
+    }
+  }, []);
 
   const handleLogout = () => {
+    // SECURITY: Clear the session data when logging out!
+    localStorage.removeItem('schoolConnectUser');
     navigate('/login');
+  };
+
+  // Helper function to dynamically generate initials (e.g., "Principal Perera" -> "PP")
+  const getInitials = (name: string) => {
+    if (!name) return 'A'; // Default Admin initial
+    const nameParts = name.trim().split(' ');
+    if (nameParts.length >= 2) {
+      return `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
   };
 
   const navItems = [
@@ -27,9 +49,12 @@ export default function SchoolAdminLayout() {
           <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-600/20">
             <Library size={24} className="text-white" />
           </div>
-          <div>
+          <div className="overflow-hidden">
             <span className="text-lg font-bold tracking-wide block">Admin Portal</span>
-            <span className="text-xs text-blue-400 font-medium">S. Thomas' College</span>
+            {/* DYNAMIC SCHOOL NAME */}
+            <span className="text-xs text-blue-400 font-medium truncate block w-full" title={adminData?.school_name}>
+              {adminData?.school_name || 'School Portal'}
+            </span>
           </div>
         </div>
 
@@ -77,11 +102,13 @@ export default function SchoolAdminLayout() {
           </h2>
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-bold text-slate-800">Principal Perera</p>
+              {/* DYNAMIC ADMIN NAME */}
+              <p className="text-sm font-bold text-slate-800">{adminData?.admin_name || 'Administrator'}</p>
               <p className="text-xs text-slate-500 font-medium">System Administrator</p>
             </div>
+            {/* DYNAMIC INITIALS */}
             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold border-2 border-white shadow-sm">
-              PP
+              {getInitials(adminData?.admin_name)}
             </div>
           </div>
         </header>

@@ -17,6 +17,7 @@ const db = require('./config/db');
 // Import Controllers and Routes
 const schoolRoutes = require('./routes/schoolRoutes');
 const schoolController = require('./controllers/schoolController');
+const schoolAdminController = require('./controllers/schoolAdminController');
 
 // Initialize Supabase Client for Storage
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -27,55 +28,22 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const upload = multer({ storage: multer.memoryStorage() });
 
 // --- APPLY MODULAR ROUTES ---
+
 // 1. Super Admin School Management
 app.use('/api/superadmin/schools', schoolRoutes);
 
 // 2. Public School Registration
 app.post('/api/schools/register', schoolController.registerSchool);
 
-// --- LEGACY AUTH & PROFILE ROUTES ---
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { role, email, password } = req.body;
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+// 3. School Admin Dashboard Data
+app.get('/api/school-admin/:email/dashboard', schoolAdminController.getSchoolDashboardStats);
 
-    if (role === 'Student') {
-      const { first_name, last_name, grade_level, index_number } = req.body;
-      const result = await db.query(
-        `INSERT INTO students (first_name, last_name, email, password, grade_level, index_number) 
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, first_name, last_name, email`,
-        [first_name, last_name, email, hashedPassword, grade_level, index_number]
-      );
-      return res.status(201).json({ message: "Student registered successfully!", user: result.rows[0] });
-    } else if (role === 'Parent') {
-      const { full_name, phone_number, child_student_ids } = req.body;
-      const result = await db.query(
-        `INSERT INTO parents (full_name, email, phone_number, password, child_student_ids) 
-         VALUES ($1, $2, $3, $4, $5) RETURNING id, full_name, email`,
-        [full_name, email, phone_number, hashedPassword, child_student_ids]
-      );
-      return res.status(201).json({ message: "Parent registered successfully!", user: result.rows[0] });
-    } else if (role === 'Teacher') {
-      const { full_name, phone_number, staff_id, department, medium, school_name } = req.body;
-      const result = await db.query(
-        `INSERT INTO teachers (full_name, email, phone_number, password, staff_id, department, medium, school_name) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, full_name, email`,
-        [full_name, email, phone_number, hashedPassword, staff_id, department, medium, school_name]
-      );
-      return res.status(201).json({ message: "Teacher registered successfully!", user: result.rows[0] });
-    } else {
-      return res.status(400).json({ error: "Invalid role selected." });
-    }
-  } catch (error) {
-    if (error.code === '23505') return res.status(400).json({ error: "Email or ID already exists." });
-    res.status(500).json({ error: "Server error during registration." });
-  }
-});
 
+// --- AUTHENTICATION ROUTES ---
+
+// Smart Cascading Login Route (No Role Required from Frontend)
 app.post('/api/auth/login', async (req, res) => {
   try {
-    // Notice: We no longer ask for 'role' from the frontend!
     const { email, password } = req.body; 
     const cleanEmail = email.toLowerCase().trim();
     
@@ -159,6 +127,49 @@ app.post('/api/auth/login', async (req, res) => {
     res.status(500).json({ error: "Server error during login." });
   }
 });
+
+// Legacy Registration Route (For standard users)
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { role, email, password } = req.body;
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    if (role === 'Student') {
+      const { first_name, last_name, grade_level, index_number } = req.body;
+      const result = await db.query(
+        `INSERT INTO students (first_name, last_name, email, password, grade_level, index_number) 
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, first_name, last_name, email`,
+        [first_name, last_name, email, hashedPassword, grade_level, index_number]
+      );
+      return res.status(201).json({ message: "Student registered successfully!", user: result.rows[0] });
+    } else if (role === 'Parent') {
+      const { full_name, phone_number, child_student_ids } = req.body;
+      const result = await db.query(
+        `INSERT INTO parents (full_name, email, phone_number, password, child_student_ids) 
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, full_name, email`,
+        [full_name, email, phone_number, hashedPassword, child_student_ids]
+      );
+      return res.status(201).json({ message: "Parent registered successfully!", user: result.rows[0] });
+    } else if (role === 'Teacher') {
+      const { full_name, phone_number, staff_id, department, medium, school_name } = req.body;
+      const result = await db.query(
+        `INSERT INTO teachers (full_name, email, phone_number, password, staff_id, department, medium, school_name) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, full_name, email`,
+        [full_name, email, phone_number, hashedPassword, staff_id, department, medium, school_name]
+      );
+      return res.status(201).json({ message: "Teacher registered successfully!", user: result.rows[0] });
+    } else {
+      return res.status(400).json({ error: "Invalid role selected." });
+    }
+  } catch (error) {
+    if (error.code === '23505') return res.status(400).json({ error: "Email or ID already exists." });
+    res.status(500).json({ error: "Server error during registration." });
+  }
+});
+
+
+// --- PROFILE ROUTING ---
 
 app.post('/api/profile/upload-avatar', upload.single('photo'), async (req, res) => {
   try {

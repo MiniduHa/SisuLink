@@ -1,13 +1,5 @@
-import { useState} from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Plus, Mail, Phone, X, Users, BookOpen, CheckCircle, XCircle, Eye, UserCheck, Briefcase, AlertCircle, MessageSquare, Send, AlignLeft, CalendarDays, MapPin, Edit3, Save, Trash2 } from 'lucide-react';
-
-// --- MOCK DATA ---
-const initialTeachers = [
-  { id: 'TCH-001', name: "Anura Fernando", department: "Science Section", subject: "Physics", medium: "English", email: "anura.f@school.edu", phone: "+94 77 123 4567", status: "Active", joined: "Jan 10, 2024" },
-  { id: 'TCH-002', name: "Kumari Perera", department: "O/L", subject: "Mathematics", medium: "Sinhala", email: "kumari.p@school.edu", phone: "+94 77 234 5678", status: "Active", joined: "Feb 15, 2024" },
-  { id: 'TCH-003', name: "Dinesh Silva", department: "O/L", subject: "English", medium: "English", email: "dinesh.s@school.edu", phone: "+94 77 345 6789", status: "On Leave", leaveReason: "Medical leave for 2 weeks (Dengue Recovery)", joined: "Mar 01, 2024" },
-  { id: 'TCH-004', name: "Malini Jayawardena", department: "Commerce Section", subject: "Accounting", medium: "English", email: "malini.j@school.edu", phone: "+94 77 456 7890", status: "Active", joined: "Aug 20, 2025" },
-];
 
 const subjectOptions: Record<string, string[]> = {
   "O/L": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Religion", "ICT", "Business & Accounting"],
@@ -17,7 +9,7 @@ const subjectOptions: Record<string, string[]> = {
   "Arts Section": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science"]
 };
 
-// --- MOCK TIMETABLE GENERATOR ---
+// --- MOCK TIMETABLE GENERATOR (Keep this until we build the backend Timetable table!) ---
 const generateMockTimetable = (subject: string) => {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const periods = [
@@ -32,9 +24,8 @@ const generateMockTimetable = (subject: string) => {
     if (period.id === 'break') return { ...period, isBreak: true };
     const row: any = { ...period, isBreak: false, days: {} };
     days.forEach(day => {
-      // 40% chance to have a class for mock data
       if (Math.random() > 0.6) {
-        row.days[day] = { class: `Grade ${Math.floor(Math.random() * 4) + 10} - A`, subject: subject, room: `Room ${Math.floor(Math.random() * 100) + 100}` };
+        row.days[day] = { class: `Grade ${Math.floor(Math.random() * 4) + 10} - A`, subject: subject || "Subject", room: `Room ${Math.floor(Math.random() * 100) + 100}` };
       } else {
         row.days[day] = null;
       }
@@ -44,27 +35,106 @@ const generateMockTimetable = (subject: string) => {
 };
 
 export default function ManageTeachers() {
+  // --- REAL BACKEND STATE ---
+  const [adminEmail, setAdminEmail] = useState('');
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // UI State
   const [searchTerm, setSearchTerm] = useState('');
   const [deptFilter, setDeptFilter] = useState('all');
-  const [teachers, setTeachers] = useState(initialTeachers);
-
-  // Modals & Profile State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
   const [activeProfileTab, setActiveProfileTab] = useState<'profile' | 'timetable'>('profile');
   
-  // Timetable Editor State
+  // Timetable & Messaging State
   const [timetableData, setTimetableData] = useState<any[]>([]);
   const [isEditingTimetable, setIsEditingTimetable] = useState(false);
   const [editingSlot, setEditingSlot] = useState<{ pIndex: number, day: string } | null>(null);
   const [slotForm, setSlotForm] = useState({ class: '', subject: '', room: '' });
-
-  // Messaging State
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [messageForm, setMessageForm] = useState({ recipientType: 'all', targetSection: '', targetTeacherId: '', subject: '', messageBody: '' });
   
+  // Add Form State
   const [formData, setFormData] = useState({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '' });
-  
+
+  // --- FETCH REAL TEACHERS ON LOAD ---
+  useEffect(() => {
+    const storedUser = localStorage.getItem('schoolConnectUser');
+    if (storedUser) {
+      const parsedUser = JSON.parse(storedUser);
+      setAdminEmail(parsedUser.email);
+      fetchTeachers(parsedUser.email);
+    }
+  }, []);
+
+  const fetchTeachers = async (email: string) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/school-admin/${email}/teachers`);
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Map the database fields to match your brilliant UI fields
+        const formattedTeachers = data.map((t: any) => ({
+          dbId: t.id,
+          id: t.staff_id,
+          name: t.full_name,
+          department: t.department,
+          subject: t.department, // Fallback until we add 'subject' to the DB
+          medium: t.medium,
+          email: t.email,
+          phone: t.phone_number || "N/A",
+          status: "Active", // Fallback until we add 'status' to the DB
+          joined: new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        }));
+
+        setTeachers(formattedTeachers);
+      }
+    } catch (err) {
+      console.error("Failed to fetch teachers", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- ADD TEACHER TO REAL DATABASE ---
+  const handleAddTeacher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    // Package the data for the backend controller we built
+    const payload = {
+      fullName: formData.fullName,
+      teacherEmail: formData.email,
+      phone: formData.phone,
+      staffId: formData.staffId,
+      department: formData.department,
+      medium: formData.medium,
+      password: "welcome123" // Automatically give them a temporary password
+    };
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/school-admin/${adminEmail}/teachers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setIsAddModalOpen(false);
+        setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '' });
+        fetchTeachers(adminEmail); // Instantly refresh the list with the new data!
+      } else {
+        setError(data.error || "Failed to add teacher.");
+      }
+    } catch (err) {
+      setError("Server connection error.");
+    }
+  };
+
   // Filter Logic
   const filteredTeachers = teachers.filter(teacher => {
     const matchesSearch = teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) || teacher.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -73,6 +143,7 @@ export default function ManageTeachers() {
   });
 
   const handleStatusToggle = (teacherId: string, currentStatus: string) => {
+    // Note: This updates the local UI. We will link this to a DB update route later!
     const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
     setTeachers(teachers.map(t => t.id === teacherId ? { ...t, status: newStatus } : t));
     if (selectedTeacher && selectedTeacher.id === teacherId) {
@@ -80,32 +151,18 @@ export default function ManageTeachers() {
     }
   };
 
-  const handleAddTeacher = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newTeacher = {
-      id: formData.staffId, name: formData.fullName, department: formData.department,
-      subject: formData.subject, medium: formData.medium, email: formData.email, phone: formData.phone,
-      status: "Active", joined: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    };
-    setTeachers([newTeacher, ...teachers]);
-    setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '' });
-    setIsAddModalOpen(false);
-  };
-
   const openMessageModal = (type: string, teacherId?: string) => {
     setMessageForm({ ...messageForm, recipientType: type, targetTeacherId: teacherId || '', targetSection: '', subject: '', messageBody: '' });
     setIsMessageModalOpen(true);
   };
 
-  // Open profile modal and initialize timetable
   const handleViewProfile = (teacher: any) => {
     setSelectedTeacher(teacher);
     setActiveProfileTab('profile');
     setIsEditingTimetable(false);
-    setTimetableData(generateMockTimetable(teacher.subject)); // Generate fresh mock data
+    setTimetableData(generateMockTimetable(teacher.subject)); 
   };
 
-  // Timetable Edit Handlers
   const handleSlotClick = (pIndex: number, day: string, currentData: any) => {
     if (!isEditingTimetable) return;
     setEditingSlot({ pIndex, day });
@@ -181,65 +238,76 @@ export default function ManageTeachers() {
               </tr>
             </thead>
             <tbody>
-              {filteredTeachers.map((teacher) => (
-                <tr key={teacher.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold border-2 border-white shadow-sm shrink-0 uppercase">
-                        {teacher.name.split(' ').map(n => n[0]).join('')}
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-800">{teacher.name}</p>
-                        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mt-0.5">
-                          <BookOpen size={12} className="text-blue-500" /> 
-                          <span className="font-semibold text-slate-700">{teacher.subject}</span> • {teacher.department} • {teacher.id}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2 text-sm text-slate-600 mb-1">
-                      <Mail size={14} className="text-slate-400" /> {teacher.email}
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <Phone size={14} className="text-slate-400" /> {teacher.phone}
-                    </div>
-                  </td>
-                  <td className="p-4 text-center">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      teacher.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 
-                      teacher.status === 'On Leave' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                      {teacher.status}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => handleViewProfile(teacher)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="View Profile & Timetable">
-                        <Eye size={18} />
-                      </button>
-                      <button onClick={() => openMessageModal('individual', teacher.id)} className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors" title="Message Teacher">
-                        <MessageSquare size={18} />
-                      </button>
-                      <button onClick={() => handleStatusToggle(teacher.id, teacher.status)} className={`p-1.5 rounded-md transition-colors ${teacher.status === 'Active' ? 'text-red-400 hover:text-red-600 hover:bg-red-50' : 'text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50'}`} title={teacher.status === 'Active' ? 'Deactivate Teacher' : 'Activate Teacher'}>
-                        {teacher.status === 'Active' ? <XCircle size={18} /> : <CheckCircle size={18} />}
-                      </button>
-                    </div>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={4} className="p-12 text-center text-slate-500">
+                    <p className="font-medium animate-pulse">Loading real-time staff data...</p>
                   </td>
                 </tr>
-              ))}
+              ) : filteredTeachers.length > 0 ? (
+                filteredTeachers.map((teacher) => (
+                  <tr key={teacher.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold border-2 border-white shadow-sm shrink-0 uppercase">
+                          {teacher.name.split(' ').map((n: string) => n[0]).join('')}
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-800">{teacher.name}</p>
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mt-0.5">
+                            <BookOpen size={12} className="text-blue-500" /> 
+                            <span className="font-semibold text-slate-700">{teacher.subject}</span> • {teacher.department} • {teacher.id}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2 text-sm text-slate-600 mb-1">
+                        <Mail size={14} className="text-slate-400" /> {teacher.email}
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <Phone size={14} className="text-slate-400" /> {teacher.phone}
+                      </div>
+                    </td>
+                    <td className="p-4 text-center">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        teacher.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 
+                        teacher.status === 'On Leave' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {teacher.status}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center justify-center gap-2">
+                        <button onClick={() => handleViewProfile(teacher)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="View Profile & Timetable">
+                          <Eye size={18} />
+                        </button>
+                        <button onClick={() => openMessageModal('individual', teacher.id)} className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors" title="Message Teacher">
+                          <MessageSquare size={18} />
+                        </button>
+                        <button onClick={() => handleStatusToggle(teacher.id, teacher.status)} className={`p-1.5 rounded-md transition-colors ${teacher.status === 'Active' ? 'text-red-400 hover:text-red-600 hover:bg-red-50' : 'text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50'}`} title={teacher.status === 'Active' ? 'Deactivate Teacher' : 'Activate Teacher'}>
+                          {teacher.status === 'Active' ? <XCircle size={18} /> : <CheckCircle size={18} />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={4} className="p-12 text-center text-slate-500">
+                    <Users size={48} className="mx-auto text-slate-300 mb-3" />
+                    <p className="font-medium text-sm">No teaching staff found. Click "Add Teacher" to onboard your team.</p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-          {filteredTeachers.length === 0 && (
-            <div className="p-8 text-center text-slate-500">No teachers found matching your filters.</div>
-          )}
         </div>
       </div>
 
-      {/* --- SMART MESSAGING MODAL (Unchanged) --- */}
+      {/* --- SMART MESSAGING MODAL --- */}
       {isMessageModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-           {/* ... (Kept identical to previous response to save space) ... */}
            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-100 p-5 flex justify-between items-center">
               <div className="flex items-center gap-3">
@@ -403,8 +471,6 @@ export default function ManageTeachers() {
               {/* TAB 2: TIMETABLE */}
               {activeProfileTab === 'timetable' && (
                 <div className="animate-in fade-in duration-300 flex flex-col h-full">
-                  
-                  {/* Timetable Header / Controls */}
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-sm font-bold text-slate-800">Master Schedule</h3>
                     <button 
@@ -419,7 +485,6 @@ export default function ManageTeachers() {
                     </button>
                   </div>
 
-                  {/* The Grid */}
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse min-w-[700px]">
@@ -492,7 +557,7 @@ export default function ManageTeachers() {
         </div>
       )}
 
-      {/* --- SLOT EDITOR MODAL (Only shows when clicking a slot in edit mode) --- */}
+      {/* --- SLOT EDITOR MODAL --- */}
       {editingSlot && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
@@ -530,7 +595,7 @@ export default function ManageTeachers() {
         </div>
       )}
 
-      {/* --- ADD NEW TEACHER MODAL (Unchanged) --- */}
+      {/* --- ADD NEW TEACHER MODAL --- */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
@@ -544,7 +609,10 @@ export default function ManageTeachers() {
               </div>
               <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-2 rounded-full transition-colors"><X size={20} /></button>
             </div>
+            
             <div className="p-6">
+              {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm font-medium border border-red-200">{error}</div>}
+              
               <form id="add-teacher-form" onSubmit={handleAddTeacher} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
