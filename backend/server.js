@@ -38,6 +38,11 @@ app.post('/api/schools/register', schoolController.registerSchool);
 // 3. School Admin Dashboard Data
 app.get('/api/school-admin/:email/dashboard', schoolAdminController.getSchoolDashboardStats);
 
+// 4. School Admin Teacher Management
+app.get('/api/school-admin/:email/teachers', schoolAdminController.getTeachers);
+app.post('/api/school-admin/:email/teachers', schoolAdminController.addTeacher);
+app.put('/api/school-admin/:email/teachers/:teacherId', schoolAdminController.updateTeacher);
+
 
 // --- AUTHENTICATION ROUTES ---
 
@@ -95,21 +100,17 @@ app.post('/api/auth/login', async (req, res) => {
 
     // --- VERIFICATION PHASE ---
 
-    // If no user was found in ANY table
     if (!user) return res.status(400).json({ error: "No account found with this email." });
 
-    // SPECIAL CHECK: If it is a School, ensure they are 'Active'
     if (assignedRole === 'SchoolAdmin' && user.status !== 'Active') {
       return res.status(403).json({ 
         error: `Login denied. Your account status is currently: ${user.status}. Please wait for Super Admin approval.` 
       });
     }
 
-    // Verify Password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: "Invalid password." });
 
-    // Send back the correct data AND tell the frontend what role they are
     if (assignedRole === 'SuperAdmin') {
       res.json({ message: "Login successful!", user: { id: user.id, full_name: user.full_name, email: user.email, role: 'SuperAdmin' }});
     } else if (assignedRole === 'SchoolAdmin') {
@@ -128,7 +129,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Legacy Registration Route (For standard users)
+// Legacy Registration Route
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { role, email, password } = req.body;
@@ -167,7 +168,6 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ error: "Server error during registration." });
   }
 });
-
 
 // --- PROFILE ROUTING ---
 
