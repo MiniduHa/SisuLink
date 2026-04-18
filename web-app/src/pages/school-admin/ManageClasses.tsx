@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, X, BookOpen, Users, GraduationCap, MapPin, Eye, UserCheck, CalendarDays, Trash2, Edit3, Save } from 'lucide-react';
+import { Search, Plus, X, BookOpen, Users, GraduationCap, MapPin, Eye, UserCheck, CalendarDays, Trash2, Edit3, Save, AlertCircle } from 'lucide-react';
 
 const timeSlots = [
   { p: 1, time: '08:00 - 08:40', isBreak: false }, { p: 2, time: '08:40 - 09:20', isBreak: false },
@@ -78,6 +78,33 @@ export default function ManageClasses() {
         fetchClasses(adminEmail);
       }
     } catch (err) { console.error(err); }
+  };
+
+  // --- NEW DELETE FUNCTION ---
+  const handleDeleteClass = async (classId: string, className: string) => {
+    // Safety confirmation dialog
+    if (!window.confirm(`Are you sure you want to delete ${className}? This will permanently erase the class and its master timetable.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/school-admin/${adminEmail}/classes/${classId}`, {
+        method: 'DELETE'
+      });
+      
+      if (res.ok) {
+        // Remove it from the UI immediately without needing a full refresh
+        setClasses(classes.filter(c => c.id !== classId));
+        if (selectedClass?.id === classId) {
+          setSelectedClass(null); // Close modal if open
+        }
+      } else {
+        alert("Failed to delete the class. Please try again.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Server connection error.");
+    }
   };
 
   // TIMETABLE API CALLS
@@ -163,10 +190,10 @@ export default function ManageClasses() {
         </div>
         <select value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)} className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium text-sm">
           <option value="all">All Grades</option>
-          <option value="10">Grade 10</option>
-          <option value="11">Grade 11</option>
-          <option value="12">Grade 12</option>
-          <option value="13">Grade 13</option>
+          <option value="Grade 10">Grade 10</option>
+          <option value="Grade 11">Grade 11</option>
+          <option value="Grade 12">Grade 12</option>
+          <option value="Grade 13">Grade 13</option>
         </select>
       </div>
 
@@ -184,7 +211,7 @@ export default function ManageClasses() {
             <tbody>
               {isLoading ? (
                 <tr><td colSpan={4} className="p-8 text-center text-slate-500 font-medium animate-pulse">Loading classes...</td></tr>
-              ) : filteredClasses.map((cls) => (
+              ) : filteredClasses.length > 0 ? filteredClasses.map((cls) => (
                 <tr key={cls.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
@@ -213,10 +240,20 @@ export default function ManageClasses() {
                       <button onClick={() => handleViewClass(cls)} className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white text-xs font-bold rounded-md transition-colors flex items-center gap-1" title="View Dashboard">
                         <Eye size={14} /> Open
                       </button>
+                      <button onClick={() => handleDeleteClass(cls.id, `${cls.grade} - ${cls.section}`)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete Class">
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                   </td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan={4} className="p-8 text-center text-slate-500 flex flex-col items-center">
+                    <AlertCircle size={32} className="text-slate-300 mb-2" />
+                    <p>No classes found.</p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -355,7 +392,7 @@ export default function ManageClasses() {
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-xs text-slate-400 mt-4 text-center">Showing mock data until students are assigned to this class.</p>
+                  <p className="text-xs text-slate-400 mt-4 text-center">Showing mock data until students are formally assigned to this class.</p>
                 </div>
               )}
             </div>
@@ -408,6 +445,7 @@ export default function ManageClasses() {
                     <div>
                       <label className="text-xs font-semibold text-slate-600 uppercase">Grade</label>
                       <select required value={formData.grade} onChange={e => setFormData({...formData, grade: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg mt-1 focus:ring-2 focus:ring-blue-100 text-slate-700">
+                        <option value="" disabled>Select Grade</option>
                         <option value="Grade 10">Grade 10</option>
                         <option value="Grade 11">Grade 11</option>
                         <option value="Grade 12">Grade 12</option>
@@ -416,7 +454,14 @@ export default function ManageClasses() {
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-600 uppercase">Section</label>
-                      <input type="text" required value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg mt-1 focus:ring-2 focus:ring-blue-100" placeholder="e.g. A, B, Bio" />
+                      <select required value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg mt-1 focus:ring-2 focus:ring-blue-100 text-slate-700">
+                        <option value="" disabled>Select Section</option>
+                        <option value="O/L">O/L</option>
+                        <option value="Science Section">Science Section</option>
+                        <option value="Commerce Section">Commerce Section</option>
+                        <option value="Technology Section">Technology Section</option>
+                        <option value="Arts Section">Arts Section</option>
+                      </select>
                     </div>
                   </div>
                   <div>

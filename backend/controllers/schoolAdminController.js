@@ -120,6 +120,28 @@ exports.addClass = async (req, res) => {
   }
 };
 
+// 6.5 Delete Class
+exports.deleteClass = async (req, res) => {
+  try {
+    const { email, classId } = req.params;
+
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const result = await db.query(
+      `DELETE FROM classes WHERE id = $1 AND school_id = $2 RETURNING *`,
+      [classId, schoolResult.rows[0].id]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "Class not found or unauthorized." });
+
+    res.json({ message: "Class deleted successfully!" });
+  } catch (error) {
+    console.error("Delete Class Error:", error.message);
+    res.status(500).json({ error: "Failed to delete class." });
+  }
+};
+
 // --- TIMETABLE MANAGEMENT ---
 
 // 7. Get Class Timetable
@@ -172,19 +194,21 @@ exports.getTeacherTimetable = async (req, res) => {
 
 // --- SMART MESSAGING SYSTEM ---
 
-// 10. Send a message from Admin to Staff
+// 10. Send a message from Admin to Staff OR Students
 exports.sendStaffMessage = async (req, res) => {
   try {
     const { email } = req.params;
-    const { recipientType, targetSection, targetTeacherId, subject, messageBody } = req.body;
+    const { recipientType, targetSection, targetTeacherId, targetGrade, targetStudentId, subject, messageBody } = req.body;
 
     const schoolResult = await db.query('SELECT id, admin_name FROM schools WHERE email = $1', [email]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     const school = schoolResult.rows[0];
 
+    // Determine the dynamic target tag based on the payload (Works for both Teachers and Students)
     let targetGroup = null;
     if (recipientType === 'section') targetGroup = targetSection;
-    if (recipientType === 'individual') targetGroup = targetTeacherId;
+    if (recipientType === 'grade') targetGroup = targetGrade;
+    if (recipientType === 'individual') targetGroup = targetTeacherId || targetStudentId;
 
     const result = await db.query(
       `INSERT INTO internal_messages (school_id, sender_name, recipient_type, target_group, subject, message_body)
@@ -199,7 +223,7 @@ exports.sendStaffMessage = async (req, res) => {
   }
 };
 
-// 11. Fetch messages for a specific Teacher (For the Mobile App)
+// 11. Fetch messages for a specific Teacher
 exports.getTeacherMessages = async (req, res) => {
   try {
     const { teacherId } = req.params;
@@ -224,5 +248,101 @@ exports.getTeacherMessages = async (req, res) => {
   } catch (error) {
     console.error("Get Messages Error:", error.message);
     res.status(500).json({ error: "Failed to fetch messages." });
+  }
+};
+
+// --- STUDENT MANAGEMENT ---
+
+// 12. Get all students for a school
+exports.getStudents = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const studentsResult = await db.query(
+      'SELECT * FROM students WHERE school_id = $1 ORDER BY created_at DESC', 
+      [schoolResult.rows[0].id]
+    );
+
+    res.json(studentsResult.rows);
+  } catch (error) {
+    console.error("Get Students Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch students." });
+  }
+};
+
+// 13. Add a new student
+exports.addStudent = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { firstName, lastName, studentId, studentEmail, grade, section, medium, subjects, parentEmail, parentPhone } = req.body;
+
+    const schoolResult = await db.query('SELECT id, name FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+    const school = schoolResult.rows[0];
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash('welcome123', salt); // Default password
+
+    const result = await db.query(
+      `INSERT INTO students (school_id, school_name, first_name, last_name, index_number, email, password, grade_level, section, medium, subjects, parent_email, parent_phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      [school.id, school.name, firstName, lastName, studentId, studentEmail, hashedPassword, grade, section, medium, JSON.stringify(subjects), parentEmail, parentPhone]
+    );
+
+    res.status(201).json({ message: "Student added successfully!", student: result.rows[0] });
+  } catch (error) {
+    console.error("Add Student Error:", error.message);
+    if (error.code === '23505') return res.status(400).json({ error: "A student with this ID or Email already exists." });
+    res.status(500).json({ error: "Failed to add student." });
+  }
+};
+
+// 14. Update an existing student
+exports.updateStudent = async (req, res) => {
+  try {
+    const { email, studentId } = req.params;
+    const { firstName, lastName, studentEmail, grade, section, medium, subjects, parentEmail, parentPhone, status } = req.body;
+
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const result = await db.query(
+      `UPDATE students 
+       SET first_name = $1, last_name = $2, email = $3, grade_level = $4, section = $5, medium = $6, subjects = $7, parent_email = $8, parent_phone = $9, status = $10
+       WHERE id = $11 AND school_id = $12 RETURNING *`,
+      [firstName, lastName, studentEmail, grade, section, medium, JSON.stringify(subjects), parentEmail, parentPhone, status, studentId, schoolResult.rows[0].id]
+    );
+
+    res.json({ message: "Student updated successfully!", student: result.rows[0] });
+  } catch (error) {
+    console.error("Update Student Error:", error.message);
+    res.status(500).json({ error: "Failed to update student." });
+  }
+};
+
+// 15. Get Dynamic Student Timetable (Read-Only from Master Schedule)
+exports.getStudentTimetable = async (req, res) => {
+  try {
+    const { email, studentId } = req.params;
+    
+    const studentQuery = await db.query('SELECT grade_level, section FROM students WHERE id = $1', [studentId]);
+    if (studentQuery.rows.length === 0) return res.status(404).json({ error: "Student not found" });
+    const student = studentQuery.rows[0];
+
+    const result = await db.query(
+      `SELECT ct.day_of_week, ct.period_number, ct.time_slot, ct.subject, t.full_name as teacher_name, c.room_number 
+       FROM class_timetables ct 
+       JOIN classes c ON ct.class_id = c.id 
+       LEFT JOIN teachers t ON ct.teacher_id = t.id
+       WHERE c.grade = $1 AND c.section = $2`, 
+      [student.grade_level, student.section]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get Student Timetable Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch timetable." });
   }
 };
