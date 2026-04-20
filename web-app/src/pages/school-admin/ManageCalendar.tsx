@@ -1,29 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Plus, X, CalendarDays, Clock, MapPin, Users, Edit2, Trash2, Calendar as CalendarIcon, Flag, BookOpen, Star } from 'lucide-react';
-
-// --- MOCK DATA ---
-const initialEvents = [
-  { 
-    id: 'EVT-001', title: "First Term Examinations Begin", date: "2026-04-25", timeFrom: "08:00", timeTo: "13:30", 
-    location: "Main Examination Halls", type: "Exam", audience: "All Grades", status: "Upcoming", isSpecial: true 
-  },
-  { 
-    id: 'EVT-002', title: "School Closed for Vesak Poya", date: "2026-05-01", timeFrom: "00:00", timeTo: "23:59", 
-    location: "N/A", type: "Holiday", audience: "All Students & Staff", status: "Upcoming", isSpecial: false 
-  },
-  { 
-    id: 'EVT-003', title: "Annual Inter-House Sports Meet", date: "2026-05-15", timeFrom: "07:30", timeTo: "16:00", 
-    location: "College Main Ground", type: "Activity", audience: "All Students", status: "Upcoming", isSpecial: true 
-  },
-  { 
-    id: 'EVT-004', title: "Grade 10 Parent-Teacher Meeting", date: "2026-05-20", timeFrom: "14:00", timeTo: "16:30", 
-    location: "Main Hall", type: "Academic", audience: "Grade 10 Parents", status: "Upcoming", isSpecial: false 
-  },
-  { 
-    id: 'EVT-005', title: "Science Fair 2026", date: "2026-06-10", timeFrom: "09:00", timeTo: "15:00", 
-    location: "Science Block", type: "Activity", audience: "Grades 10-13", status: "Draft", isSpecial: false 
-  },
-];
 
 // Helper to convert 24h "14:30" format to "02:30 PM"
 const formatTime = (timeStr: string) => {
@@ -35,10 +11,18 @@ const formatTime = (timeStr: string) => {
   return `${formattedHours.toString().padStart(2, '0')}:${m} ${ampm}`;
 };
 
+// Helper to safely format SQL dates (YYYY-MM-DDT... to YYYY-MM-DD)
+const formatSqlDate = (isoString: string) => {
+  if (!isoString) return '';
+  return isoString.split('T')[0];
+};
+
 export default function ManageCalendar() {
+  const [adminEmail, setAdminEmail] = useState('');
+  const [events, setEvents] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [events, setEvents] = useState(initialEvents);
 
   // Form & Modal State
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -48,15 +32,49 @@ export default function ManageCalendar() {
   const [formData, setFormData] = useState({
     title: '', date: '', timeFrom: '', timeTo: '', location: '', type: '', audience: '', status: 'Upcoming', isSpecial: false
   });
-  
-  // Filter Logic
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('schoolConnectUser');
+    if (storedUser) {
+      const parsedUser = JSON.parse(storedUser);
+      setAdminEmail(parsedUser.email);
+      fetchEvents(parsedUser.email);
+    }
+  }, []);
+
+  const fetchEvents = async (email: string) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/school-admin/${email}/events`);
+      if (res.ok) {
+        const data = await res.json();
+        // Map database snake_case to frontend camelCase
+        const formattedEvents = data.map((evt: any) => ({
+          id: evt.id,
+          title: evt.title,
+          date: formatSqlDate(evt.event_date),
+          timeFrom: evt.time_from,
+          timeTo: evt.time_to,
+          location: evt.location,
+          type: evt.type,
+          audience: evt.audience,
+          status: evt.status,
+          isSpecial: evt.is_special
+        }));
+        setEvents(formattedEvents);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const filteredEvents = events.filter(evt => {
     const matchesSearch = evt.title.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === 'all' || evt.type.toLowerCase() === typeFilter.toLowerCase();
     return matchesSearch && matchesType;
   });
 
-  // Helper function to pick the right icon and color for event types
   const getEventTypeStyles = (type: string) => {
     switch(type) {
       case 'Exam': return { color: 'text-amber-600 bg-amber-50 border-amber-200', icon: BookOpen };
@@ -85,37 +103,46 @@ export default function ManageCalendar() {
     setIsFormModalOpen(true);
   };
 
-  const handleDeleteEvent = (id: string) => {
+  const handleDeleteEvent = async (id: string) => {
     if(window.confirm("Are you sure you want to delete this event?")) {
-      setEvents(events.filter(evt => evt.id !== id));
+      try {
+        const res = await fetch(`http://localhost:5000/api/school-admin/${adminEmail}/events/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          setEvents(events.filter(evt => evt.id !== id));
+        } else {
+          alert("Failed to delete event.");
+        }
+      } catch (err) {
+        alert("Server error during deletion.");
+      }
     }
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const submittedEvent = {
-      id: formMode === 'edit' && editingEventId ? editingEventId : `EVT-${Math.floor(Math.random() * 10000)}`,
-      title: formData.title,
-      date: formData.date,
-      timeFrom: formData.timeFrom,
-      timeTo: formData.timeTo,
-      location: formData.location,
-      type: formData.type,
-      audience: formData.audience,
-      status: formData.status,
-      isSpecial: formData.isSpecial
-    };
-
-    if (formMode === 'edit') {
-      setEvents(events.map(evt => evt.id === editingEventId ? submittedEvent : evt));
-    } else {
-      // Sort the events by date when adding a new one
-      const newEvents = [submittedEvent, ...events].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setEvents(newEvents);
-    }
+    const url = formMode === 'add' 
+      ? `http://localhost:5000/api/school-admin/${adminEmail}/events`
+      : `http://localhost:5000/api/school-admin/${adminEmail}/events/${editingEventId}`;
     
-    setIsFormModalOpen(false);
+    const method = formMode === 'add' ? 'POST' : 'PUT';
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      if (res.ok) {
+        setIsFormModalOpen(false);
+        fetchEvents(adminEmail); // Refresh list to get accurate sorting & new DB IDs
+      } else {
+        alert("Failed to save event. Check your inputs.");
+      }
+    } catch (err) {
+      alert("Server connection error.");
+    }
   };
 
   return (
@@ -170,7 +197,9 @@ export default function ManageCalendar() {
               </tr>
             </thead>
             <tbody>
-              {filteredEvents.map((evt) => {
+              {isLoading ? (
+                <tr><td colSpan={4} className="p-8 text-center text-slate-500 font-medium animate-pulse">Loading calendar events...</td></tr>
+              ) : filteredEvents.map((evt) => {
                 const { color, icon: TypeIcon } = getEventTypeStyles(evt.type);
                 
                 return (
@@ -235,7 +264,7 @@ export default function ManageCalendar() {
               })}
             </tbody>
           </table>
-          {filteredEvents.length === 0 && (
+          {!isLoading && filteredEvents.length === 0 && (
             <div className="p-8 text-center text-slate-500 flex flex-col items-center gap-2">
               <CalendarDays size={32} className="text-slate-300" />
               <p>No events found matching your filters.</p>
@@ -353,7 +382,25 @@ export default function ManageCalendar() {
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Target Audience</label>
-                      <input type="text" required placeholder="e.g. All Students, Grade 10 Parents" value={formData.audience} onChange={(e) => setFormData({...formData, audience: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm" />
+                      <select 
+                        required 
+                        value={formData.audience} 
+                        onChange={(e) => setFormData({...formData, audience: e.target.value})} 
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm text-slate-700"
+                      >
+                        <option value="" disabled>Select Target Audience</option>
+                        <option value="All Students & Staff">All Students & Staff</option>
+                        <option value="All Students">All Students</option>
+                        <option value="All Teaching Staff">All Teaching Staff</option>
+                        <option value="Parents (All Grades)">Parents (All Grades)</option>
+                        <option value="O/L Students (Grades 10-11)">O/L Students (Grades 10-11)</option>
+                        <option value="A/L Students (Grades 12-13)">A/L Students (Grades 12-13)</option>
+                        <option value="Grade 10 Students & Parents">Grade 10 Students & Parents</option>
+                        <option value="Grade 11 Students & Parents">Grade 11 Students & Parents</option>
+                        <option value="Grade 12 Students & Parents">Grade 12 Students & Parents</option>
+                        <option value="Grade 13 Students & Parents">Grade 13 Students & Parents</option>
+                        <option value="Specific Section (See Title)">Specific Section (See Title)</option>
+                      </select>
                     </div>
                   </div>
                 </div>

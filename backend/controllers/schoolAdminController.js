@@ -322,7 +322,7 @@ exports.updateStudent = async (req, res) => {
   }
 };
 
-// 15. Get Dynamic Student Timetable (Read-Only from Master Schedule)
+// 15. Get Dynamic Student Timetable
 exports.getStudentTimetable = async (req, res) => {
   try {
     const { email, studentId } = req.params;
@@ -344,5 +344,90 @@ exports.getStudentTimetable = async (req, res) => {
   } catch (error) {
     console.error("Get Student Timetable Error:", error.message);
     res.status(500).json({ error: "Failed to fetch timetable." });
+  }
+};
+
+// --- CALENDAR MANAGEMENT ---
+
+// 16. Get all events
+exports.getEvents = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const result = await db.query(
+      'SELECT * FROM events WHERE school_id = $1 ORDER BY event_date ASC, time_from ASC', 
+      [schoolResult.rows[0].id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get Events Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch events." });
+  }
+};
+
+// 17. Add a new event
+exports.addEvent = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { title, date, timeFrom, timeTo, location, type, audience, status, isSpecial } = req.body;
+    
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const result = await db.query(
+      `INSERT INTO events (school_id, title, event_date, time_from, time_to, location, type, audience, status, is_special)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [schoolResult.rows[0].id, title, date, timeFrom, timeTo, location, type, audience, status, isSpecial]
+    );
+    
+    res.status(201).json({ message: "Event added successfully!", event: result.rows[0] });
+  } catch (error) {
+    console.error("Add Event Error:", error.message);
+    res.status(500).json({ error: "Failed to add event." });
+  }
+};
+
+// 18. Update an event
+exports.updateEvent = async (req, res) => {
+  try {
+    const { email, eventId } = req.params;
+    const { title, date, timeFrom, timeTo, location, type, audience, status, isSpecial } = req.body;
+    
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const result = await db.query(
+      `UPDATE events
+       SET title = $1, event_date = $2, time_from = $3, time_to = $4, location = $5, type = $6, audience = $7, status = $8, is_special = $9
+       WHERE id = $10 AND school_id = $11 RETURNING *`,
+      [title, date, timeFrom, timeTo, location, type, audience, status, isSpecial, eventId, schoolResult.rows[0].id]
+    );
+    
+    res.json({ message: "Event updated successfully!", event: result.rows[0] });
+  } catch (error) {
+    console.error("Update Event Error:", error.message);
+    res.status(500).json({ error: "Failed to update event." });
+  }
+};
+
+// 19. Delete an event
+exports.deleteEvent = async (req, res) => {
+  try {
+    const { email, eventId } = req.params;
+    
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    await db.query(
+      'DELETE FROM events WHERE id = $1 AND school_id = $2', 
+      [eventId, schoolResult.rows[0].id]
+    );
+    
+    res.json({ message: "Event deleted successfully!" });
+  } catch (error) {
+    console.error("Delete Event Error:", error.message);
+    res.status(500).json({ error: "Failed to delete event." });
   }
 };

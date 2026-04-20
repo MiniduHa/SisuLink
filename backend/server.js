@@ -63,6 +63,11 @@ app.post('/api/school-admin/:email/students', schoolAdminController.addStudent);
 app.put('/api/school-admin/:email/students/:studentId', schoolAdminController.updateStudent);
 app.get('/api/school-admin/:email/students/:studentId/timetable', schoolAdminController.getStudentTimetable);
 
+// 9. School Admin Calendar Management
+app.get('/api/school-admin/:email/events', schoolAdminController.getEvents);
+app.post('/api/school-admin/:email/events', schoolAdminController.addEvent);
+app.put('/api/school-admin/:email/events/:eventId', schoolAdminController.updateEvent);
+app.delete('/api/school-admin/:email/events/:eventId', schoolAdminController.deleteEvent);
 
 // --- AUTHENTICATION ROUTES ---
 
