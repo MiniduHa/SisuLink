@@ -17,7 +17,7 @@ exports.getSchoolDashboardStats = async (req, res) => {
       totalTeachers = parseInt(teacherCount.rows[0].count, 10);
       const studentCount = await db.query('SELECT COUNT(*) FROM students WHERE school_name = $1', [schoolName]); 
       totalStudents = parseInt(studentCount.rows[0].count, 10);
-      const parentCount = await db.query('SELECT COUNT(*) FROM parents');
+      const parentCount = await db.query('SELECT COUNT(*) FROM parents WHERE school_id = $1', [schoolResult.rows[0].id]);
       totalParents = parseInt(parentCount.rows[0].count, 10);
     } catch (e) { console.error("Query error", e); }
 
@@ -204,7 +204,6 @@ exports.sendStaffMessage = async (req, res) => {
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     const school = schoolResult.rows[0];
 
-    // Determine the dynamic target tag based on the payload
     let targetGroup = null;
     if (recipientType === 'section') targetGroup = targetSection;
     if (recipientType === 'grade') targetGroup = targetGrade;
@@ -349,7 +348,6 @@ exports.getStudentTimetable = async (req, res) => {
 
 // --- CALENDAR MANAGEMENT ---
 
-// 16. Get all events
 exports.getEvents = async (req, res) => {
   try {
     const { email } = req.params;
@@ -361,7 +359,6 @@ exports.getEvents = async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to fetch events." }); }
 };
 
-// 17. Add a new event
 exports.addEvent = async (req, res) => {
   try {
     const { email } = req.params;
@@ -379,7 +376,6 @@ exports.addEvent = async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to add event." }); }
 };
 
-// 18. Update an event
 exports.updateEvent = async (req, res) => {
   try {
     const { email, eventId } = req.params;
@@ -396,7 +392,6 @@ exports.updateEvent = async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to update event." }); }
 };
 
-// 19. Delete an event
 exports.deleteEvent = async (req, res) => {
   try {
     const { email, eventId } = req.params;
@@ -410,7 +405,6 @@ exports.deleteEvent = async (req, res) => {
 
 // --- NOTICE MANAGEMENT ---
 
-// 20. Get all notices
 exports.getNotices = async (req, res) => {
   try {
     const { email } = req.params;
@@ -422,7 +416,6 @@ exports.getNotices = async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to fetch notices." }); }
 };
 
-// 21. Add a new notice
 exports.addNotice = async (req, res) => {
   try {
     const { email } = req.params;
@@ -440,7 +433,6 @@ exports.addNotice = async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to add notice." }); }
 };
 
-// 22. Update a notice
 exports.updateNotice = async (req, res) => {
   try {
     const { email, noticeId } = req.params;
@@ -457,7 +449,6 @@ exports.updateNotice = async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to update notice." }); }
 };
 
-// 23. Delete a notice
 exports.deleteNotice = async (req, res) => {
   try {
     const { email, noticeId } = req.params;
@@ -467,4 +458,100 @@ exports.deleteNotice = async (req, res) => {
     await db.query('DELETE FROM notices WHERE id = $1 AND school_id = $2', [noticeId, schoolResult.rows[0].id]);
     res.json({ message: "Notice deleted successfully!" });
   } catch (error) { res.status(500).json({ error: "Failed to delete notice." }); }
+};
+
+// --- PARENT MANAGEMENT ---
+
+// 24. Get all parents
+exports.getParents = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const result = await db.query('SELECT * FROM parents WHERE school_id = $1 ORDER BY created_at DESC', [schoolResult.rows[0].id]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get Parents Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch parents." });
+  }
+};
+
+// 25. Add a parent (FIXED ARRAY LITERAL BUG)
+exports.addParent = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { fullName, parentEmail, phone, childStudentIds, password } = req.body;
+    
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password || 'welcome123', salt);
+
+    // FIX: Safely parse the comma-separated string into a real Array for PostgreSQL
+    let childIdsArray = [];
+    if (childStudentIds && typeof childStudentIds === 'string') {
+        childIdsArray = childStudentIds.split(',').map(id => id.trim()).filter(id => id !== '');
+    }
+
+    const result = await db.query(
+      `INSERT INTO parents (school_id, full_name, email, phone_number, password, child_student_ids) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, full_name, email`,
+      [schoolResult.rows[0].id, fullName, parentEmail.toLowerCase().trim(), phone, hashedPassword, childIdsArray]
+    );
+
+    res.status(201).json({ message: "Parent added successfully!", parent: result.rows[0] });
+  } catch (error) {
+    console.error("Add Parent Error:", error.message);
+    if (error.code === '23505') return res.status(400).json({ error: "A parent with this email already exists." });
+    res.status(500).json({ error: "Failed to add parent." });
+  }
+};
+
+// 26. Update a parent (FIXED ARRAY LITERAL BUG)
+exports.updateParent = async (req, res) => {
+  try {
+    const { email, parentId } = req.params;
+    const { fullName, parentEmail, phone, childStudentIds, status } = req.body;
+    
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    // FIX: Safely parse the comma-separated string into a real Array for PostgreSQL
+    let childIdsArray = [];
+    if (childStudentIds && typeof childStudentIds === 'string') {
+        childIdsArray = childStudentIds.split(',').map(id => id.trim()).filter(id => id !== '');
+    } else if (Array.isArray(childStudentIds)) {
+        childIdsArray = childStudentIds; // Fallback if already an array
+    }
+
+    const result = await db.query(
+      `UPDATE parents 
+       SET full_name = $1, email = $2, phone_number = $3, child_student_ids = $4, status = $5
+       WHERE id = $6 AND school_id = $7 RETURNING *`,
+      [fullName, parentEmail.toLowerCase().trim(), phone, childIdsArray, status, parentId, schoolResult.rows[0].id]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "Parent not found." });
+    res.json({ message: "Parent updated successfully!", parent: result.rows[0] });
+  } catch (error) {
+    console.error("Update Parent Error:", error.message);
+    res.status(500).json({ error: "Failed to update parent." });
+  }
+};
+
+// 27. Delete a parent
+exports.deleteParent = async (req, res) => {
+  try {
+    const { email, parentId } = req.params;
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    await db.query('DELETE FROM parents WHERE id = $1 AND school_id = $2', [parentId, schoolResult.rows[0].id]);
+    res.json({ message: "Parent deleted successfully!" });
+  } catch (error) {
+    console.error("Delete Parent Error:", error.message);
+    res.status(500).json({ error: "Failed to delete parent." });
+  }
 };

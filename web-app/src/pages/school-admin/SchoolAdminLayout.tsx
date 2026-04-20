@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, GraduationCap, BookOpen, CalendarDays, Bell, Settings, LogOut, Library } from 'lucide-react';
+import { LayoutDashboard, Users, GraduationCap, BookOpen, CalendarDays, Bell, Settings, LogOut, Library, UserSquare } from 'lucide-react';
 
 export default function SchoolAdminLayout() {
   const navigate = useNavigate();
@@ -35,6 +35,7 @@ export default function SchoolAdminLayout() {
     { name: 'Dashboard', path: '/school-admin', icon: LayoutDashboard },
     { name: 'Teachers', path: '/school-admin/teachers', icon: Users },
     { name: 'Students', path: '/school-admin/students', icon: GraduationCap },
+    { name: 'Parents', path: '/school-admin/parents', icon: UserSquare }, // <-- NEW PARENTS TAB ADDED HERE
     { name: 'Classes', path: '/school-admin/classes', icon: BookOpen },
     { name: 'Calendar', path: '/school-admin/calendar', icon: CalendarDays },
     { name: 'Notices', path: '/school-admin/notices', icon: Bell },

@@ -75,6 +75,12 @@ app.post('/api/school-admin/:email/notices', schoolAdminController.addNotice);
 app.put('/api/school-admin/:email/notices/:noticeId', schoolAdminController.updateNotice);
 app.delete('/api/school-admin/:email/notices/:noticeId', schoolAdminController.deleteNotice);
 
+// 11. School Admin Parent Management
+app.get('/api/school-admin/:email/parents', schoolAdminController.getParents);
+app.post('/api/school-admin/:email/parents', schoolAdminController.addParent);
+app.put('/api/school-admin/:email/parents/:parentId', schoolAdminController.updateParent);
+app.delete('/api/school-admin/:email/parents/:parentId', schoolAdminController.deleteParent);
+
 
 // --- AUTHENTICATION ROUTES ---
 

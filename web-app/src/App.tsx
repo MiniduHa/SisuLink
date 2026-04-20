@@ -18,6 +18,7 @@ import ManageStudents from './pages/school-admin/ManageStudents';
 import ManageClasses from './pages/school-admin/ManageClasses';
 import ManageCalendar from './pages/school-admin/ManageCalendar';
 import ManageNotices from './pages/school-admin/ManageNotices';
+import ManageParents from './pages/school-admin/ManageParents';
 
 function App() {
   return (
@@ -44,6 +45,7 @@ function App() {
           <Route path="classes" element={<ManageClasses />} />
           <Route path="calendar" element={<ManageCalendar />} />
           <Route path="notices" element={<ManageNotices />} />
+          <Route path="parents" element={<ManageParents />} />
         </Route>
 
       </Routes>
