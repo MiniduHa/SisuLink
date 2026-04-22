@@ -135,8 +135,14 @@ export default function TeacherLoginScreen() {
                 </View>
               </View>
 
-              {/* Forgot Password */}
-              <TouchableOpacity style={styles.forgotPassword}>
+              {/* UPDATED: Forgot Password Button routing with the "Teacher" role */}
+              <TouchableOpacity 
+                style={styles.forgotPassword}
+                onPress={() => router.push({
+                  pathname: "/forgot-password",
+                  params: { role: "Teacher" } 
+                })}
+              >
                 <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
               </TouchableOpacity>
 

@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   TouchableWithoutFeedback,
   Keyboard,
-  ScrollView // Added ScrollView
+  ScrollView 
 } from "react-native";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -65,12 +65,9 @@ export default function StudentLoginScreen() {
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={{ flex: 1, backgroundColor: "#2B8CEE" }}>
-        {/* We use KeyboardAvoidingView to push the content up */}
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : "height"} 
           style={{ flex: 1 }}
-          // keyboardVerticalOffset is the "secret sauce" - adjust this number 
-          // if the password field is still slightly covered.
           keyboardVerticalOffset={Platform.OS === "ios" ? 0 : -100} 
         >
           <ScrollView 
@@ -132,7 +129,14 @@ export default function StudentLoginScreen() {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.forgotPassword}>
+              {/* UPDATED: Forgot Password Button */}
+              <TouchableOpacity 
+                style={styles.forgotPassword}
+                onPress={() => router.push({
+                  pathname: "/forgot-password",
+                  params: { role: "Student" } 
+                })}
+              >
                 <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
               </TouchableOpacity>
 

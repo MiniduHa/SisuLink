@@ -3,6 +3,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs'); 
 const multer = require('multer'); 
 const { createClient } = require('@supabase/supabase-js'); 
+const nodemailer = require('nodemailer'); // <-- NEW: Imported Nodemailer for sending OTP emails
 require('dotenv').config();
 
 const app = express();
@@ -218,6 +219,119 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ error: "Server error during registration." });
   }
 });
+
+
+// ---> NEW: PASSWORD RESET ROUTES <---
+
+// In-memory storage for OTPs (Clears if server restarts, which is fine for now)
+const otpStore = new Map(); 
+
+// 1. Send OTP
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    let tableToUpdate = null;
+    
+    // Safely map the role to your exact database tables
+    if (role === 'Student') tableToUpdate = 'students';
+    else if (role === 'Parent') tableToUpdate = 'parents';
+    else if (role === 'Teacher') tableToUpdate = 'teachers';
+    // Add 'Company' or 'Industry' here later if needed
+    
+    if (!tableToUpdate) return res.status(400).json({ error: "Invalid role for password reset." });
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Check if user exists in the correct table
+    const userResult = await db.query(`SELECT id FROM ${tableToUpdate} WHERE email = $1`, [cleanEmail]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: "Account not found." });
+
+    // Generate random 6 digit code
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Save to memory with 15 minute expiration
+    otpStore.set(cleanEmail, { otp, expires: Date.now() + 15 * 60000 });
+
+    // Setup NodeMailer (Use your .env variables or hardcode for testing)
+    const transporter = nodemailer.createTransport({
+      service: 'gmail', 
+      auth: {
+        user: process.env.EMAIL_USER || 'your-email@gmail.com', 
+        pass: process.env.EMAIL_PASS || 'your-app-password'    
+      }
+    });
+
+    const mailOptions = {
+      from: 'School Connect <no-reply@schoolconnect.com>',
+      to: cleanEmail,
+      subject: 'Your Password Reset Code',
+      text: `Your password reset code is: ${otp}. It will expire in 15 minutes.`
+    };
+
+    // Attempt to send email. If credentials aren't set, it logs the OTP to terminal so you can still test the mobile app!
+    try {
+      await transporter.sendMail(mailOptions);
+    } catch (mailErr) {
+      console.log(`⚠️ Email failed (Check your .env credentials). Test OTP for ${cleanEmail} is: ${otp}`);
+    }
+
+    res.json({ message: "OTP sent successfully." });
+
+  } catch (error) {
+    console.error("Forgot Password Error:", error.message);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// 2. Verify OTP
+app.post('/api/auth/verify-otp', async (req, res) => {
+  const { email, otp } = req.body;
+  const cleanEmail = email.toLowerCase().trim();
+  const record = otpStore.get(cleanEmail);
+
+  if (!record) return res.status(400).json({ error: "Code expired or not requested." });
+  if (record.expires < Date.now()) {
+    otpStore.delete(cleanEmail);
+    return res.status(400).json({ error: "Code has expired. Request a new one." });
+  }
+  if (record.otp !== otp) return res.status(400).json({ error: "Incorrect code." });
+
+  res.json({ message: "OTP verified successfully." });
+});
+
+// 3. Reset Password
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { email, role, newPassword } = req.body;
+    const cleanEmail = email.toLowerCase().trim();
+    
+    let tableToUpdate = null;
+    if (role === 'Student') tableToUpdate = 'students';
+    else if (role === 'Parent') tableToUpdate = 'parents';
+    else if (role === 'Teacher') tableToUpdate = 'teachers';
+
+    if (!tableToUpdate) return res.status(400).json({ error: "Invalid role." });
+
+    // Verify they actually completed the OTP step recently
+    const record = otpStore.get(cleanEmail);
+    if (!record) return res.status(400).json({ error: "Session expired. Try again." });
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update the password in the correct database table
+    await db.query(`UPDATE ${tableToUpdate} SET password = $1 WHERE email = $2`, [hashedPassword, cleanEmail]);
+    
+    // Clear OTP so it can't be reused
+    otpStore.delete(cleanEmail);
+
+    res.json({ message: "Password updated successfully." });
+  } catch (error) {
+    console.error("Reset Password Error:", error.message);
+    res.status(500).json({ error: "Server error updating password." });
+  }
+});
+
 
 // --- PROFILE ROUTING ---
 app.post('/api/profile/upload-avatar', upload.single('photo'), async (req, res) => {
