@@ -9,7 +9,7 @@ const subjectOptions: Record<string, string[]> = {
   "Arts Section": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science"]
 };
 
-// --- NEW REAL TIMETABLE FORMATTER ---
+// --- REAL TIMETABLE FORMATTER ---
 const formatTeacherTimetable = (dbTimetable: any[]) => {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const periods = [
@@ -25,7 +25,6 @@ const formatTeacherTimetable = (dbTimetable: any[]) => {
     
     const row: any = { ...period, days: {} };
     days.forEach(day => {
-      // Find if the teacher has a class assigned for this exact day and period
       const assignedClass = dbTimetable.find(slot => slot.day_of_week === day && slot.period_number === period.p);
       
       if (assignedClass) {
@@ -35,7 +34,7 @@ const formatTeacherTimetable = (dbTimetable: any[]) => {
           room: assignedClass.room_number || "TBD" 
         };
       } else {
-        row.days[day] = null; // Free Period
+        row.days[day] = null; 
       }
     });
     return row;
@@ -59,13 +58,13 @@ export default function ManageTeachers() {
   const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
   const [activeProfileTab, setActiveProfileTab] = useState<'profile' | 'timetable'>('profile');
   
-  // Real Timetable State
   const [timetableData, setTimetableData] = useState<any[]>([]);
   
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [messageForm, setMessageForm] = useState({ recipientType: 'all', targetSection: '', targetTeacherId: '', subject: '', messageBody: '' });
   
-  const [formData, setFormData] = useState({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active' });
+  // FIXED: Added password to the form data state
+  const [formData, setFormData] = useState({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '' });
 
   useEffect(() => {
     const storedUser = localStorage.getItem('schoolConnectUser');
@@ -78,17 +77,25 @@ export default function ManageTeachers() {
 
   const fetchTeachers = async (email: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/school-admin/${email}/teachers`);
+      const timestamp = new Date().getTime();
+      const response = await fetch(`http://localhost:5000/api/school-admin/${email}/teachers?t=${timestamp}`, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
       if (response.ok) {
         const data = await response.json();
+        
         const formattedTeachers = data.map((t: any) => ({
           dbId: t.id,
-          id: t.staff_id,
-          name: t.full_name,
-          department: t.department,
+          id: t.staff_id || "N/A",
+          name: t.full_name || "Unknown Teacher",
+          department: t.department || "Unassigned",
           subject: t.subject || "Not Assigned",
-          medium: t.medium,
-          email: t.email,
+          medium: t.medium || "N/A",
+          email: t.email || "No Email",
           phone: t.phone_number || "N/A",
           status: t.status || "Active",
           joined: new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -107,7 +114,6 @@ export default function ManageTeachers() {
       const res = await fetch(`http://localhost:5000/api/school-admin/${adminEmail}/teachers/${teacherDbId}/timetable`);
       if (res.ok) {
         const data = await res.json();
-        // Convert flat DB rows into our beautiful UI grid
         setTimetableData(formatTeacherTimetable(data));
       }
     } catch (err) {
@@ -118,14 +124,15 @@ export default function ManageTeachers() {
   const handleAddTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const payload = { ...formData, teacherEmail: formData.email, password: "welcome123" };
+    // FIXED: Dynamically send the password entered by the Admin
+    const payload = { ...formData, teacherEmail: formData.email };
     try {
       const response = await fetch(`http://localhost:5000/api/school-admin/${adminEmail}/teachers`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
       if (response.ok) {
         setIsAddModalOpen(false);
-        setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active' });
+        setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '' });
         fetchTeachers(adminEmail);
       } else {
         const data = await response.json();
@@ -138,7 +145,7 @@ export default function ManageTeachers() {
     setEditingDbId(teacher.dbId);
     setFormData({
       fullName: teacher.name, staffId: teacher.id, email: teacher.email, phone: teacher.phone === "N/A" ? "" : teacher.phone,
-      department: teacher.department, subject: teacher.subject === "Not Assigned" ? "" : teacher.subject, medium: teacher.medium, status: teacher.status
+      department: teacher.department, subject: teacher.subject === "Not Assigned" ? "" : teacher.subject, medium: teacher.medium, status: teacher.status, password: ''
     });
     setIsEditModalOpen(true);
   };
@@ -154,7 +161,7 @@ export default function ManageTeachers() {
       if (response.ok) {
         setIsEditModalOpen(false);
         setEditingDbId(null);
-        setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active' });
+        setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '' });
         fetchTeachers(adminEmail); 
       } else {
         const data = await response.json();
@@ -183,12 +190,10 @@ export default function ManageTeachers() {
   const handleViewProfile = (teacher: any) => {
     setSelectedTeacher(teacher);
     setActiveProfileTab('profile');
-    // Clear old timetable instantly, then fetch the real one
     setTimetableData(formatTeacherTimetable([])); 
     fetchTeacherTimetable(teacher.dbId);
   };
 
-  // --- NEW SMART MESSAGING FUNCTION ---
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -200,7 +205,6 @@ export default function ManageTeachers() {
 
       if (response.ok) {
         setIsMessageModalOpen(false);
-        // Reset the form so it's clean for next time
         setMessageForm({ recipientType: 'all', targetSection: '', targetTeacherId: '', subject: '', messageBody: '' });
         alert("Message successfully dispatched to staff!"); 
       } else {
@@ -213,8 +217,14 @@ export default function ManageTeachers() {
   };
 
   const filteredTeachers = teachers.filter(teacher => {
-    const matchesSearch = teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) || teacher.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDept = deptFilter === 'all' || teacher.department.toLowerCase() === deptFilter.toLowerCase();
+    const safeName = (teacher.name || "").toLowerCase();
+    const safeId = (teacher.id || "").toLowerCase();
+    const safeDept = (teacher.department || "").toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
+
+    const matchesSearch = safeName.includes(searchLower) || safeId.includes(searchLower);
+    const matchesDept = deptFilter === 'all' || safeDept === deptFilter.toLowerCase();
+    
     return matchesSearch && matchesDept;
   });
 
@@ -231,7 +241,7 @@ export default function ManageTeachers() {
           <button onClick={() => setIsMessageModalOpen(true)} className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm">
             <MessageSquare size={18} /> Message Staff
           </button>
-          <button onClick={() => { setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active' }); setIsAddModalOpen(true); }} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm">
+          <button onClick={() => { setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '' }); setIsAddModalOpen(true); }} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm">
             <Plus size={18} /> Add Teacher
           </button>
         </div>
@@ -274,7 +284,7 @@ export default function ManageTeachers() {
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold border-2 border-white shadow-sm shrink-0 uppercase">
-                          {teacher.name.split(' ').map((n: string) => n[0]).join('')}
+                          {(teacher.name || "T").charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <p className="font-bold text-slate-800">{teacher.name}</p>
@@ -392,11 +402,13 @@ export default function ManageTeachers() {
                       <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Teaching Subject</label>
                       <select required value={formData.subject} onChange={(e) => setFormData({...formData, subject: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm text-slate-700">
                         <option value="" disabled>Select Subject</option>
-                        {subjectOptions[formData.department].map((subject) => (<option key={subject} value={subject}>{subject}</option>))}
+                        {subjectOptions[formData.department] ? subjectOptions[formData.department].map((subject) => (<option key={subject} value={subject}>{subject}</option>)) : null}
                       </select>
                     </div>
                   )}
-                  {isEditModalOpen && (
+                  
+                  {/* FIXED: Conditionally render Password input or Status toggle based on add/edit mode */}
+                  {isEditModalOpen ? (
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Account Status</label>
                       <select required value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm text-slate-700">
@@ -404,6 +416,11 @@ export default function ManageTeachers() {
                         <option value="On Leave">On Leave</option>
                         <option value="Inactive">Inactive</option>
                       </select>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Initial Password</label>
+                      <input type="text" required placeholder="Set teacher's password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm" />
                     </div>
                   )}
                 </div>
@@ -428,7 +445,7 @@ export default function ManageTeachers() {
             <div className="bg-slate-50 border-b border-slate-100 p-6 flex justify-between items-start shrink-0">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-2xl font-bold border-4 border-white shadow-sm shrink-0 uppercase">
-                  {selectedTeacher.name.split(' ').map((n: string) => n[0]).join('')}
+                  {(selectedTeacher.name || "T").charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-slate-800">{selectedTeacher.name}</h2>

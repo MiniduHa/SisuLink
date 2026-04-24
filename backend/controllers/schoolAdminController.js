@@ -6,18 +6,19 @@ exports.getSchoolDashboardStats = async (req, res) => {
   try {
     const { email } = req.params;
 
-    const schoolResult = await db.query('SELECT * FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT * FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     
     const schoolName = schoolResult.rows[0].name;
+    const schoolId = schoolResult.rows[0].id;
 
     let totalTeachers = 0, totalStudents = 0, totalParents = 0;
     try {
-      const teacherCount = await db.query('SELECT COUNT(*) FROM teachers WHERE school_name = $1', [schoolName]);
+      const teacherCount = await db.query('SELECT COUNT(*) FROM teachers WHERE school_id = $1', [schoolId]);
       totalTeachers = parseInt(teacherCount.rows[0].count, 10);
-      const studentCount = await db.query('SELECT COUNT(*) FROM students WHERE school_name = $1', [schoolName]); 
+      const studentCount = await db.query('SELECT COUNT(*) FROM students WHERE school_id = $1', [schoolId]); 
       totalStudents = parseInt(studentCount.rows[0].count, 10);
-      const parentCount = await db.query('SELECT COUNT(*) FROM parents WHERE school_id = $1', [schoolResult.rows[0].id]);
+      const parentCount = await db.query('SELECT COUNT(*) FROM parents WHERE school_id = $1', [schoolId]);
       totalParents = parseInt(parentCount.rows[0].count, 10);
     } catch (e) { console.error("Query error", e); }
 
@@ -33,10 +34,14 @@ exports.getSchoolDashboardStats = async (req, res) => {
 exports.getTeachers = async (req, res) => {
   try {
     const { email } = req.params;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     
-    const teachersResult = await db.query('SELECT id, full_name, email, phone_number, staff_id, department, subject, medium, status, created_at FROM teachers WHERE school_id = $1 ORDER BY created_at DESC', [schoolResult.rows[0].id]);
+    // Safety Net: Added school_id and profile_photo_url to the fetch so the web dashboard can see everything!
+    const teachersResult = await db.query(
+      'SELECT id, full_name, email, phone_number, staff_id, department, subject, medium, status, school_id, profile_photo_url, created_at FROM teachers WHERE school_id = $1 ORDER BY created_at DESC', 
+      [schoolResult.rows[0].id]
+    );
     res.json(teachersResult.rows);
   } catch (error) { res.status(500).json({ error: "Failed to fetch teachers." }); }
 };
@@ -46,7 +51,7 @@ exports.addTeacher = async (req, res) => {
   try {
     const { email } = req.params; 
     const { fullName, teacherEmail, phone, staffId, department, subject, medium, password } = req.body;
-    const schoolResult = await db.query('SELECT id, name FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id, name FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     
     const salt = await bcrypt.genSalt(10);
@@ -68,7 +73,7 @@ exports.updateTeacher = async (req, res) => {
   try {
     const { email, teacherId } = req.params; 
     const { fullName, teacherEmail, phone, staffId, department, subject, medium, status } = req.body;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query(
@@ -86,7 +91,7 @@ exports.updateTeacher = async (req, res) => {
 exports.getClasses = async (req, res) => {
   try {
     const { email } = req.params;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     
     const classesResult = await db.query(
@@ -104,7 +109,7 @@ exports.addClass = async (req, res) => {
   try {
     const { email } = req.params;
     const { grade, section, classTeacherId, roomNumber, capacity } = req.body;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     
     const teacherId = classTeacherId && classTeacherId.trim() !== '' ? classTeacherId : null;
@@ -125,7 +130,7 @@ exports.deleteClass = async (req, res) => {
   try {
     const { email, classId } = req.params;
 
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query(
@@ -162,7 +167,7 @@ exports.saveTimetableSlot = async (req, res) => {
   try {
     const { email, classId } = req.params;
     const { dayOfWeek, periodNumber, timeSlot, subject, teacherId } = req.body;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const tId = teacherId && teacherId.trim() !== '' ? teacherId : null;
@@ -200,7 +205,7 @@ exports.sendStaffMessage = async (req, res) => {
     const { email } = req.params;
     const { recipientType, targetSection, targetTeacherId, targetGrade, targetStudentId, subject, messageBody } = req.body;
 
-    const schoolResult = await db.query('SELECT id, admin_name FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id, admin_name FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     const school = schoolResult.rows[0];
 
@@ -256,7 +261,7 @@ exports.getTeacherMessages = async (req, res) => {
 exports.getStudents = async (req, res) => {
   try {
     const { email } = req.params;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const studentsResult = await db.query(
@@ -277,7 +282,7 @@ exports.addStudent = async (req, res) => {
     const { email } = req.params;
     const { firstName, lastName, studentId, studentEmail, grade, section, medium, subjects, parentEmail, parentPhone } = req.body;
 
-    const schoolResult = await db.query('SELECT id, name FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id, name FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     const school = schoolResult.rows[0];
 
@@ -287,7 +292,7 @@ exports.addStudent = async (req, res) => {
     const result = await db.query(
       `INSERT INTO students (school_id, school_name, first_name, last_name, index_number, email, password, grade_level, section, medium, subjects, parent_email, parent_phone)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-      [school.id, school.name, firstName, lastName, studentId, studentEmail, hashedPassword, grade, section, medium, JSON.stringify(subjects), parentEmail, parentPhone]
+      [school.id, school.name, firstName, lastName, studentId, studentEmail.toLowerCase().trim(), hashedPassword, grade, section, medium, JSON.stringify(subjects), parentEmail, parentPhone]
     );
 
     res.status(201).json({ message: "Student added successfully!", student: result.rows[0] });
@@ -304,14 +309,14 @@ exports.updateStudent = async (req, res) => {
     const { email, studentId } = req.params;
     const { firstName, lastName, studentEmail, grade, section, medium, subjects, parentEmail, parentPhone, status } = req.body;
 
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query(
       `UPDATE students 
        SET first_name = $1, last_name = $2, email = $3, grade_level = $4, section = $5, medium = $6, subjects = $7, parent_email = $8, parent_phone = $9, status = $10
        WHERE id = $11 AND school_id = $12 RETURNING *`,
-      [firstName, lastName, studentEmail, grade, section, medium, JSON.stringify(subjects), parentEmail, parentPhone, status, studentId, schoolResult.rows[0].id]
+      [firstName, lastName, studentEmail.toLowerCase().trim(), grade, section, medium, JSON.stringify(subjects), parentEmail, parentPhone, status, studentId, schoolResult.rows[0].id]
     );
 
     res.json({ message: "Student updated successfully!", student: result.rows[0] });
@@ -351,7 +356,7 @@ exports.getStudentTimetable = async (req, res) => {
 exports.getEvents = async (req, res) => {
   try {
     const { email } = req.params;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query('SELECT * FROM events WHERE school_id = $1 ORDER BY event_date ASC, time_from ASC', [schoolResult.rows[0].id]);
@@ -364,7 +369,7 @@ exports.addEvent = async (req, res) => {
     const { email } = req.params;
     const { title, date, timeFrom, timeTo, location, type, audience, status, isSpecial } = req.body;
     
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query(
@@ -381,7 +386,7 @@ exports.updateEvent = async (req, res) => {
     const { email, eventId } = req.params;
     const { title, date, timeFrom, timeTo, location, type, audience, status, isSpecial } = req.body;
     
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query(
@@ -395,7 +400,7 @@ exports.updateEvent = async (req, res) => {
 exports.deleteEvent = async (req, res) => {
   try {
     const { email, eventId } = req.params;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     await db.query('DELETE FROM events WHERE id = $1 AND school_id = $2', [eventId, schoolResult.rows[0].id]);
@@ -408,7 +413,7 @@ exports.deleteEvent = async (req, res) => {
 exports.getNotices = async (req, res) => {
   try {
     const { email } = req.params;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query('SELECT * FROM notices WHERE school_id = $1 ORDER BY created_at DESC', [schoolResult.rows[0].id]);
@@ -421,7 +426,7 @@ exports.addNotice = async (req, res) => {
     const { email } = req.params;
     const { title, content, priority, audience, author, status } = req.body;
     
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query(
@@ -438,7 +443,7 @@ exports.updateNotice = async (req, res) => {
     const { email, noticeId } = req.params;
     const { title, content, priority, audience, author, status } = req.body;
     
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query(
@@ -452,7 +457,7 @@ exports.updateNotice = async (req, res) => {
 exports.deleteNotice = async (req, res) => {
   try {
     const { email, noticeId } = req.params;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     await db.query('DELETE FROM notices WHERE id = $1 AND school_id = $2', [noticeId, schoolResult.rows[0].id]);
@@ -466,7 +471,7 @@ exports.deleteNotice = async (req, res) => {
 exports.getParents = async (req, res) => {
   try {
     const { email } = req.params;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const result = await db.query('SELECT * FROM parents WHERE school_id = $1 ORDER BY created_at DESC', [schoolResult.rows[0].id]);
@@ -477,19 +482,18 @@ exports.getParents = async (req, res) => {
   }
 };
 
-// 25. Add a parent (FIXED ARRAY LITERAL BUG)
+// 25. Add a parent 
 exports.addParent = async (req, res) => {
   try {
     const { email } = req.params;
     const { fullName, parentEmail, phone, childStudentIds, password } = req.body;
     
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password || 'welcome123', salt);
 
-    // FIX: Safely parse the comma-separated string into a real Array for PostgreSQL
     let childIdsArray = [];
     if (childStudentIds && typeof childStudentIds === 'string') {
         childIdsArray = childStudentIds.split(',').map(id => id.trim()).filter(id => id !== '');
@@ -509,21 +513,20 @@ exports.addParent = async (req, res) => {
   }
 };
 
-// 26. Update a parent (FIXED ARRAY LITERAL BUG)
+// 26. Update a parent 
 exports.updateParent = async (req, res) => {
   try {
     const { email, parentId } = req.params;
     const { fullName, parentEmail, phone, childStudentIds, status } = req.body;
     
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
-    // FIX: Safely parse the comma-separated string into a real Array for PostgreSQL
     let childIdsArray = [];
     if (childStudentIds && typeof childStudentIds === 'string') {
         childIdsArray = childStudentIds.split(',').map(id => id.trim()).filter(id => id !== '');
     } else if (Array.isArray(childStudentIds)) {
-        childIdsArray = childStudentIds; // Fallback if already an array
+        childIdsArray = childStudentIds; 
     }
 
     const result = await db.query(
@@ -545,7 +548,7 @@ exports.updateParent = async (req, res) => {
 exports.deleteParent = async (req, res) => {
   try {
     const { email, parentId } = req.params;
-    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email]);
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
     await db.query('DELETE FROM parents WHERE id = $1 AND school_id = $2', [parentId, schoolResult.rows[0].id]);

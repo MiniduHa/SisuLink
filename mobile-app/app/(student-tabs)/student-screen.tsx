@@ -8,7 +8,8 @@ import {
   Dimensions,
   Modal,
   Platform,
-  Image
+  Image,
+  ActivityIndicator
 } from "react-native";
 import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -32,46 +33,61 @@ export default function StudentScreen() {
   const isALevel = gradeLevel.includes("12") || gradeLevel.includes("13");
   const academicLevel = isALevel ? "A/L" : "O/L";
 
-  // --- FETCH LATEST DATA EVERY TIME SCREEN APPEARS (BYPASS CACHE) ---
+  // --- DASHBOARD DATA STATES ---
+  const [isLoading, setIsLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<any>({
+    ongoingSubjects: [],
+    gradesData: [],
+    internshipsData: [],
+    attendanceStats: { percentage: "0%", status: "Loading...", message: "", present: 0, absent: 0 }
+  });
+
+  // --- FETCH LATEST DATA EVERY TIME SCREEN APPEARS ---
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
 
-      const fetchProfile = async () => {
+      const fetchAllData = async () => {
         if (!studentId) return;
+        setIsLoading(true);
         try {
           const timestamp = new Date().getTime();
-          const response = await fetch(`http://172.20.10.7:5000/api/profile/${studentId}?t=${timestamp}`, {
-            headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
-          });
           
-          if (response.ok && isActive) {
-            const data = await response.json();
-            setFirstName(data.first_name);
-            setLastName(data.last_name);
-            setEmail(data.email);
-            setGradeLevel(data.grade_level);
+          // 1. Fetch Profile Info
+          const profileRes = fetch(`http://172.20.10.7:5000/api/profile/${studentId}?t=${timestamp}`);
+          // 2. Fetch Dashboard Widgets Info (Subjects, Grades, Internships)
+          const dashboardRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/dashboard?t=${timestamp}`);
+          
+          // Wait for both API calls to finish
+          const [profileResponse, dashboardResponse] = await Promise.all([profileRes, dashboardRes]);
+
+          if (profileResponse.ok && dashboardResponse.ok && isActive) {
+            const profileData = await profileResponse.json();
+            const dashData = await dashboardResponse.json();
             
-            if (data.profile_photo_url) {
-              setProfilePhoto(data.profile_photo_url);
-            }
+            // Set Profile
+            setFirstName(profileData.first_name);
+            setLastName(profileData.last_name);
+            setEmail(profileData.email);
+            setGradeLevel(profileData.grade_level);
+            if (profileData.profile_photo_url) setProfilePhoto(profileData.profile_photo_url);
+
+            // Set Dashboard Widgets
+            setDashboardData(dashData);
           }
         } catch (error) {
-          console.error("Failed to fetch fresh profile data:", error);
+          console.error("Failed to fetch dashboard data:", error);
+        } finally {
+          if (isActive) setIsLoading(false);
         }
       };
 
-      fetchProfile();
-
+      fetchAllData();
       return () => { isActive = false; };
     }, [studentId])
   );
 
-  // --- DASHBOARD STATES ---
+  // --- UI STATES ---
   const [greeting, setGreeting] = useState("");
   const [currentDate, setCurrentDate] = useState("");
   const [isAttendanceModalVisible, setAttendanceModalVisible] = useState(false);
@@ -90,51 +106,31 @@ export default function StudentScreen() {
     setCurrentDate(`${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`);
   }, []);
 
-  // --- DATA ARRAYS ---
-  const ongoingSubjects = isALevel 
-    ? [ { id: "1", name: "Combined Mathematics", teacher: "Mr. Perera", icon: "sigma", color: "#2563EB", bg: "#EFF6FF" }, { id: "2", name: "Physics", teacher: "Mrs. Silva", icon: "flask", color: "#7C3AED", bg: "#F5F3FF" }, { id: "3", name: "Chemistry", teacher: "Mr. Fernando", icon: "vial", color: "#059669", bg: "#ECFDF5" } ]
-    : [ { id: "1", name: "Mathematics", teacher: "Mr. Bandara", icon: "sigma", color: "#2563EB", bg: "#EFF6FF" }, { id: "2", name: "Science", teacher: "Mrs. Kumari", icon: "flask", color: "#7C3AED", bg: "#F5F3FF" }, { id: "3", name: "English", teacher: "Ms. Jayawardena", icon: "book", color: "#059669", bg: "#ECFDF5" } ];
-
-  const gradesData = isALevel
-    ? [ { id: "1", subject: "Combined Mathematics", type: "Mid-term Exam", grade: "A", gradeColor: "#15803D", gradeBg: "#DCFCE7", icon: "sigma", iconBg: "#E0F2FE", iconColor: "#2563EB", trend: "arrow-trend-up", trendColor: "#22C55E" }, { id: "2", subject: "Physics", type: "Assessment", grade: "B+", gradeColor: "#4338CA", gradeBg: "#E0E7FF", icon: "flask", iconBg: "#EDE9FE", iconColor: "#7C3AED", trend: "arrow-right", trendColor: "#9CA3AF" } ]
-    : [ { id: "1", subject: "Mathematics", type: "Term Test", grade: "A", gradeColor: "#15803D", gradeBg: "#DCFCE7", icon: "sigma", iconBg: "#E0F2FE", iconColor: "#2563EB", trend: "arrow-trend-up", trendColor: "#22C55E" }, { id: "2", subject: "Science", type: "Monthly Test", grade: "A-", gradeColor: "#15803D", gradeBg: "#DCFCE7", icon: "flask", iconBg: "#EDE9FE", iconColor: "#7C3AED", trend: "arrow-trend-up", trendColor: "#22C55E" } ];
-
-  const internshipsData = [
-    { id: "1", title: "Software Engineering Intern", company: "Dialog Axiata • Colombo", type: "FULL TIME", bg: "#E0F2FE" },
-    { id: "2", title: "Junior UI/UX Designer", company: "WSO2 • Remote", type: "PART TIME", bg: "#F8FAFC" },
-  ];
-
-  // RESTORED: subjectMaterials data
+  // Static Materials for now until DB tables exist
   const subjectMaterials = {
-    videos: [
-      { id: "v1", title: "Chapter 1: Introduction", duration: "45 mins" },
-      { id: "v2", title: "Chapter 2: Advanced Theory", duration: "50 mins" },
-    ],
-    notes: [
-      { id: "n1", title: "Full Lecture Notes - Unit 1", size: "2.4 MB" },
-      { id: "n2", title: "Quick Revision Summary", size: "1.1 MB" },
-    ],
-    modelPapers: [
-      { id: "m1", title: "Royal College Model Paper", size: "3.2 MB" },
-      { id: "m2", title: "Zonal Education Model Paper", size: "4.1 MB" },
-    ],
-    pastPapers: [
-      { id: "p1", title: "2023 Past Paper", size: "5.6 MB" },
-      { id: "p2", title: "2022 Past Paper", size: "4.8 MB" },
-    ]
+    videos: [ { id: "v1", title: "Chapter 1: Introduction", duration: "45 mins" }, { id: "v2", title: "Chapter 2: Advanced Theory", duration: "50 mins" } ],
+    notes: [ { id: "n1", title: "Full Lecture Notes - Unit 1", size: "2.4 MB" }, { id: "n2", title: "Quick Revision Summary", size: "1.1 MB" } ]
   };
 
   const calendarDays = [
     { day: 28, type: 'prev', status: 'none' }, { day: 29, type: 'prev', status: 'none' }, { day: 30, type: 'prev', status: 'none' },
     { day: 1, type: 'current', status: 'present' }, { day: 2, type: 'current', status: 'present' }, { day: 3, type: 'current', status: 'absent' }, { day: 4, type: 'current', status: 'present' },
     { day: 5, type: 'current', status: 'none' }, { day: 6, type: 'current', status: 'present', selected: true }, { day: 7, type: 'current', status: 'none' }, { day: 8, type: 'current', status: 'present' }, { day: 9, type: 'current', status: 'present' }, { day: 10, type: 'current', status: 'present' }, { day: 11, type: 'current', status: 'none' },
-    { day: 12, type: 'current', status: 'present' }, { day: 13, type: 'current', status: 'present' }, { day: 14, type: 'current', status: 'absent' }, { day: 15, type: 'current', status: 'present' }, { day: 16, type: 'current', status: 'present' }, { day: 17, type: 'current', status: 'present' }, { day: 18, type: 'current', status: 'none' },
   ];
 
   const openSubject = (subject: any) => {
     setSelectedSubject(subject);
     setSubjectModalVisible(true);
   };
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#2563EB" />
+        <Text style={{ marginTop: 10, color: "#64748B" }}>Loading Dashboard...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -150,7 +146,7 @@ export default function StudentScreen() {
                   first_name: firstName, 
                   last_name: lastName, 
                   grade: gradeLevel, 
-                  attendance: "85%", 
+                  attendance: dashboardData.attendanceStats.percentage, 
                   email: email,      
                   studentId: studentId,
                   profile_photo: profilePhoto || ""
@@ -180,14 +176,14 @@ export default function StudentScreen() {
           <Text style={styles.sectionSubtitle}>Attendance Overview</Text>
           <View style={styles.attendanceRow}>
             <View style={styles.attendanceLeft}>
-              <Text style={styles.attendancePercentage}>85%</Text>
-              <Text style={styles.attendanceStatus}>On Track</Text>
+              <Text style={styles.attendancePercentage}>{dashboardData.attendanceStats.percentage}</Text>
+              <Text style={styles.attendanceStatus}>{dashboardData.attendanceStats.status}</Text>
             </View>
             <TouchableOpacity onPress={() => setAttendanceModalVisible(true)}>
               <FontAwesome6 name="calendar-check" size={20} color="#3B82F6" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.attendanceFooter}>Excellent consistency this month.</Text>
+          <Text style={styles.attendanceFooter}>{dashboardData.attendanceStats.message}</Text>
         </View>
 
         <View style={styles.sectionHeader}>
@@ -195,7 +191,7 @@ export default function StudentScreen() {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subjectsScroll}>
-          {ongoingSubjects.map((item) => (
+          {dashboardData.ongoingSubjects.map((item: any) => (
             <TouchableOpacity key={item.id} style={[styles.subjectCard, { backgroundColor: item.bg }]} onPress={() => openSubject(item)} activeOpacity={0.9}>
               <View style={[styles.subjectIconBox, { backgroundColor: item.color + '20' }]}> 
                 {item.icon === "sigma" ? ( <MaterialCommunityIcons name="sigma" size={28} color={item.color} /> ) : ( <FontAwesome6 name={item.icon} size={22} color={item.color} /> )}
@@ -211,7 +207,7 @@ export default function StudentScreen() {
           <TouchableOpacity onPress={() => router.push("/grades")}><Text style={styles.linkText}>View Report</Text></TouchableOpacity>
         </View>
 
-        {gradesData.map((item) => (
+        {dashboardData.gradesData.map((item: any) => (
           <View key={item.id} style={styles.gradeCard}>
             <View style={styles.gradeInfoLeft}>
               <View style={[styles.gradeIconContainer, { backgroundColor: item.iconBg }]}>
@@ -232,7 +228,7 @@ export default function StudentScreen() {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.internshipScroll}>
-          {internshipsData.map((item) => (
+          {dashboardData.internshipsData.map((item: any) => (
             <View key={item.id} style={[styles.internshipCard, { backgroundColor: item.bg }]}>
               <View style={styles.internshipTopRow}>
                 <View style={styles.companyLogoPlaceholder}><Text style={styles.companyInitial}>{item.company.charAt(0)}</Text></View>
@@ -288,23 +284,6 @@ export default function StudentScreen() {
                 </View>
               ))}
             </View>
-
-            <View style={styles.materialSection}>
-              <View style={styles.materialSectionHeader}>
-                <Feather name="file-text" size={18} color="#1E293B" />
-                <Text style={styles.materialSectionTitle}>Lecture Notes</Text>
-              </View>
-              {subjectMaterials.notes.map(note => (
-                <View key={note.id} style={styles.materialItem}>
-                  <View style={styles.materialItemIconBox}><FontAwesome6 name="file-pdf" size={16} color="#EF4444" /></View>
-                  <View style={styles.materialItemInfo}>
-                    <Text style={styles.materialItemTitle}>{note.title}</Text>
-                    <Text style={styles.materialItemSub}>PDF • {note.size}</Text>
-                  </View>
-                  <TouchableOpacity style={styles.downloadButton}><Feather name="download" size={16} color="#2563EB" /></TouchableOpacity>
-                </View>
-              ))}
-            </View>
           </ScrollView>
         </View>
       </Modal>
@@ -325,12 +304,12 @@ export default function StudentScreen() {
               <View style={[styles.statCard, { backgroundColor: "#F0F9FF", flex: 1.2 }]}>
                 <Text style={styles.statLabel}>Total Attendance</Text>
                 <View style={styles.statValueRow}>
-                  <Text style={styles.statValue}>85%</Text>
+                  <Text style={styles.statValue}>{dashboardData.attendanceStats.percentage}</Text>
                   <Text style={styles.statTrend}>+2%</Text>
                 </View>
               </View>
-              <View style={[styles.statCard, { flex: 1 }]}><Text style={styles.statLabel}>Present</Text><Text style={styles.statValue}>170</Text></View>
-              <View style={[styles.statCard, { flex: 1 }]}><Text style={styles.statLabel}>Absent</Text><Text style={styles.statValue}>30</Text></View>
+              <View style={[styles.statCard, { flex: 1 }]}><Text style={styles.statLabel}>Present</Text><Text style={styles.statValue}>{dashboardData.attendanceStats.present}</Text></View>
+              <View style={[styles.statCard, { flex: 1 }]}><Text style={styles.statLabel}>Absent</Text><Text style={styles.statValue}>{dashboardData.attendanceStats.absent}</Text></View>
             </View>
 
             <View style={styles.calendarWidget}>

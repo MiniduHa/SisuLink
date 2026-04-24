@@ -14,7 +14,16 @@ import { FontAwesome6 } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 const API_URL = "http://172.20.10.7:5000/api/auth/register";
-const SCHOOLS_API_URL = "http://172.20.10.7:5000/api/schools/list"; // NEW: Endpoint to fetch schools
+const SCHOOLS_API_URL = "http://172.20.10.7:5000/api/schools/list"; 
+
+// --- MATCHED DEPARTMENTS & SUBJECTS FROM WEB DASHBOARD ---
+const subjectOptions: Record<string, string[]> = {
+  "O/L": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Religion", "ICT", "Business & Accounting"],
+  "Science Section": ["Combined Mathematics", "Biology", "Physics", "Chemistry", "Agriculture"],
+  "Commerce Section": ["Accounting", "Business Studies", "Economics", "ICT"],
+  "Technology Section": ["Engineering Technology (ET)", "Bio Systems Technology (BST)", "Science for Technology (SFT)", "ICT"],
+  "Arts Section": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science"]
+};
 
 const CustomInput = ({ label, ...props }: any) => (
   <View style={styles.inputGroup}>
@@ -45,7 +54,7 @@ const CustomDropdown = ({ label, value, options, onSelect }: any) => {
 
       {isOpen && (
         <View style={styles.dropdownList}>
-          {options.length > 0 ? (
+          {options && options.length > 0 ? (
             options.map((opt: string) => (
               <TouchableOpacity 
                 key={opt} 
@@ -102,8 +111,11 @@ export default function SignupScreen() {
 
   const [studentId, setStudentId] = useState("");
   const [grade, setGrade] = useState("");
+  
+  // Teacher Specific States
   const [staffId, setStaffId] = useState("");
   const [department, setDepartment] = useState("");
+  const [subject, setSubject] = useState(""); // NEW: Added subject state
   const [medium, setMedium] = useState("");
   
   const [companyName, setCompanyName] = useState("");
@@ -122,7 +134,6 @@ export default function SignupScreen() {
         const response = await fetch(SCHOOLS_API_URL);
         if (response.ok) {
           const data = await response.json();
-          // Extract just the school names from the database objects
           setSchoolList(data.map((s: any) => s.name));
         }
       } catch (error) {
@@ -169,6 +180,12 @@ export default function SignupScreen() {
       return;
     }
 
+    // Force Subject selection for Teachers
+    if (role === "Teacher" && (!department || !subject)) {
+      Alert.alert("Error", "Please select both a Department and a Teaching Subject.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -183,7 +200,7 @@ export default function SignupScreen() {
         payload.last_name = lastName;
         payload.grade_level = grade;
         payload.index_number = studentId;
-        payload.school_name = school; // Included the selected school
+        payload.school_name = school; 
       } else if (role === "Parent") {
         payload.full_name = fullName;
         payload.phone_number = phone;
@@ -193,8 +210,9 @@ export default function SignupScreen() {
         payload.phone_number = phone;
         payload.staff_id = staffId;
         payload.department = department;
+        payload.subject = subject; // NEW: Added subject to payload
         payload.medium = medium;
-        payload.school_name = school; // Included the selected school
+        payload.school_name = school; 
       }
       
       const response = await fetch(API_URL, {
@@ -260,7 +278,6 @@ export default function SignupScreen() {
             <CustomInput label="Student ID / Index" placeholder="Enter your ID" value={studentId} onChangeText={setStudentId} />
             <CustomInput label="Grade" placeholder="e.g. Grade 10" value={grade} onChangeText={setGrade} />
             
-            {/* DYNAMIC SCHOOL DROPDOWN */}
             <CustomDropdown 
               label="Registered School" 
               value={school} 
@@ -310,10 +327,29 @@ export default function SignupScreen() {
             <CustomInput label="Email Address" placeholder="your@email.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
             <CustomInput label="Phone Number" placeholder="e.g. +94 77 123 4567" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
             <CustomInput label="Staff ID" placeholder="Enter your Staff ID" value={staffId} onChangeText={setStaffId} />
-            <CustomDropdown label="Department" value={department} options={["O/L", "Science Stream", "Commerce Stream", "Technology Stream"]} onSelect={setDepartment} />
+            
+            {/* NEW: Dynamic Department and Subject Dropdowns */}
+            <CustomDropdown 
+              label="Department / Section" 
+              value={department} 
+              options={Object.keys(subjectOptions)} 
+              onSelect={(selectedDept: string) => {
+                setDepartment(selectedDept);
+                setSubject(""); // Reset subject if they pick a new department!
+              }} 
+            />
+            
+            {department ? (
+              <CustomDropdown 
+                label="Teaching Subject" 
+                value={subject} 
+                options={subjectOptions[department]} 
+                onSelect={setSubject} 
+              />
+            ) : null}
+
             <CustomDropdown label="Medium" value={medium} options={["English", "Sinhala", "Tamil"]} onSelect={setMedium} />
             
-            {/* DYNAMIC SCHOOL DROPDOWN */}
             <CustomDropdown 
               label="Registered School" 
               value={school} 

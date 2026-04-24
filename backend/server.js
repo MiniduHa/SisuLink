@@ -3,7 +3,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs'); 
 const multer = require('multer'); 
 const { createClient } = require('@supabase/supabase-js'); 
-const nodemailer = require('nodemailer'); // <-- NEW: Imported Nodemailer for sending OTP emails
+const nodemailer = require('nodemailer'); 
 require('dotenv').config();
 
 const app = express();
@@ -36,7 +36,7 @@ app.use('/api/superadmin/schools', schoolRoutes);
 // 2. Public School Registration
 app.post('/api/schools/register', schoolController.registerSchool);
 
-// ---> NEW: Fetch list of active registered schools for mobile app dropdown
+// 3. Fetch list of active registered schools for mobile app dropdown
 app.get('/api/schools/list', async (req, res) => {
   try {
     const result = await db.query("SELECT name FROM schools WHERE status = 'Active'");
@@ -47,47 +47,47 @@ app.get('/api/schools/list', async (req, res) => {
   }
 });
 
-// 3. School Admin Dashboard Data
+// 4. School Admin Dashboard Data
 app.get('/api/school-admin/:email/dashboard', schoolAdminController.getSchoolDashboardStats);
 
-// 4. School Admin Teacher Management
+// 5. School Admin Teacher Management
 app.get('/api/school-admin/:email/teachers', schoolAdminController.getTeachers);
 app.post('/api/school-admin/:email/teachers', schoolAdminController.addTeacher);
 app.put('/api/school-admin/:email/teachers/:teacherId', schoolAdminController.updateTeacher);
 
-// 5. School Admin Class Management
+// 6. School Admin Class Management
 app.get('/api/school-admin/:email/classes', schoolAdminController.getClasses);
 app.post('/api/school-admin/:email/classes', schoolAdminController.addClass);
 app.delete('/api/school-admin/:email/classes/:classId', schoolAdminController.deleteClass);
 
-// 6. Master Timetable Management
+// 7. Master Timetable Management
 app.get('/api/school-admin/:email/classes/:classId/timetable', schoolAdminController.getClassTimetable);
 app.post('/api/school-admin/:email/classes/:classId/timetable', schoolAdminController.saveTimetableSlot);
 app.get('/api/school-admin/:email/teachers/:teacherId/timetable', schoolAdminController.getTeacherTimetable);
 
-// 7. Universal Messaging System
+// 8. Universal Messaging System
 app.post('/api/school-admin/:email/messages/send', schoolAdminController.sendStaffMessage);
 app.get('/api/teachers/:teacherId/messages', schoolAdminController.getTeacherMessages);
 
-// 8. School Admin Student Management
+// 9. School Admin Student Management
 app.get('/api/school-admin/:email/students', schoolAdminController.getStudents);
 app.post('/api/school-admin/:email/students', schoolAdminController.addStudent);
 app.put('/api/school-admin/:email/students/:studentId', schoolAdminController.updateStudent);
 app.get('/api/school-admin/:email/students/:studentId/timetable', schoolAdminController.getStudentTimetable);
 
-// 9. School Admin Calendar Management
+// 10. School Admin Calendar Management
 app.get('/api/school-admin/:email/events', schoolAdminController.getEvents);
 app.post('/api/school-admin/:email/events', schoolAdminController.addEvent);
 app.put('/api/school-admin/:email/events/:eventId', schoolAdminController.updateEvent);
 app.delete('/api/school-admin/:email/events/:eventId', schoolAdminController.deleteEvent);
 
-// 10. School Admin Notice Management
+// 11. School Admin Notice Management
 app.get('/api/school-admin/:email/notices', schoolAdminController.getNotices);
 app.post('/api/school-admin/:email/notices', schoolAdminController.addNotice);
 app.put('/api/school-admin/:email/notices/:noticeId', schoolAdminController.updateNotice);
 app.delete('/api/school-admin/:email/notices/:noticeId', schoolAdminController.deleteNotice);
 
-// 11. School Admin Parent Management
+// 12. School Admin Parent Management
 app.get('/api/school-admin/:email/parents', schoolAdminController.getParents);
 app.post('/api/school-admin/:email/parents', schoolAdminController.addParent);
 app.put('/api/school-admin/:email/parents/:parentId', schoolAdminController.updateParent);
@@ -164,7 +164,6 @@ app.post('/api/auth/register', async (req, res) => {
     if (role === 'Student') {
       const { first_name, last_name, grade_level, index_number, school_name } = req.body;
       
-      // Match the school name from the dropdown to the actual School ID in the database
       let school_id = null;
       if (school_name) {
         const schoolRes = await db.query('SELECT id FROM schools WHERE name = $1', [school_name]);
@@ -180,7 +179,6 @@ app.post('/api/auth/register', async (req, res) => {
     } else if (role === 'Parent') {
       const { full_name, phone_number, child_student_ids } = req.body;
       
-      // FIXED: Safely convert the incoming child_student_ids into a proper Postgres Array
       let childIdsArray = [];
       if (child_student_ids && typeof child_student_ids === 'string') {
           childIdsArray = child_student_ids.split(',').map(id => id.trim()).filter(id => id !== '');
@@ -197,7 +195,6 @@ app.post('/api/auth/register', async (req, res) => {
     } else if (role === 'Teacher') {
       const { full_name, phone_number, staff_id, department, medium, school_name } = req.body;
       
-      // Match the school name from the dropdown to the actual School ID in the database
       let school_id = null;
       if (school_name) {
         const schoolRes = await db.query('SELECT id FROM schools WHERE name = $1', [school_name]);
@@ -221,38 +218,28 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 
-// ---> NEW: PASSWORD RESET ROUTES <---
+// --- PASSWORD RESET ROUTES ---
 
-// In-memory storage for OTPs (Clears if server restarts, which is fine for now)
 const otpStore = new Map(); 
 
-// 1. Send OTP
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { email, role } = req.body;
     let tableToUpdate = null;
     
-    // Safely map the role to your exact database tables
     if (role === 'Student') tableToUpdate = 'students';
     else if (role === 'Parent') tableToUpdate = 'parents';
     else if (role === 'Teacher') tableToUpdate = 'teachers';
-    // Add 'Company' or 'Industry' here later if needed
     
     if (!tableToUpdate) return res.status(400).json({ error: "Invalid role for password reset." });
 
     const cleanEmail = email.toLowerCase().trim();
-
-    // Check if user exists in the correct table
     const userResult = await db.query(`SELECT id FROM ${tableToUpdate} WHERE email = $1`, [cleanEmail]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: "Account not found." });
 
-    // Generate random 6 digit code
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Save to memory with 15 minute expiration
     otpStore.set(cleanEmail, { otp, expires: Date.now() + 15 * 60000 });
 
-    // Setup NodeMailer (Use your .env variables or hardcode for testing)
     const transporter = nodemailer.createTransport({
       service: 'gmail', 
       auth: {
@@ -268,7 +255,6 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       text: `Your password reset code is: ${otp}. It will expire in 15 minutes.`
     };
 
-    // Attempt to send email. If credentials aren't set, it logs the OTP to terminal so you can still test the mobile app!
     try {
       await transporter.sendMail(mailOptions);
     } catch (mailErr) {
@@ -283,7 +269,6 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
-// 2. Verify OTP
 app.post('/api/auth/verify-otp', async (req, res) => {
   const { email, otp } = req.body;
   const cleanEmail = email.toLowerCase().trim();
@@ -299,7 +284,6 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   res.json({ message: "OTP verified successfully." });
 });
 
-// 3. Reset Password
 app.post('/api/auth/reset-password', async (req, res) => {
   try {
     const { email, role, newPassword } = req.body;
@@ -312,23 +296,154 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
     if (!tableToUpdate) return res.status(400).json({ error: "Invalid role." });
 
-    // Verify they actually completed the OTP step recently
     const record = otpStore.get(cleanEmail);
     if (!record) return res.status(400).json({ error: "Session expired. Try again." });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update the password in the correct database table
     await db.query(`UPDATE ${tableToUpdate} SET password = $1 WHERE email = $2`, [hashedPassword, cleanEmail]);
-    
-    // Clear OTP so it can't be reused
     otpStore.delete(cleanEmail);
 
     res.json({ message: "Password updated successfully." });
   } catch (error) {
     console.error("Reset Password Error:", error.message);
     res.status(500).json({ error: "Server error updating password." });
+  }
+});
+
+
+// --- REAL DB STUDENT DASHBOARD ROUTE ---
+app.get('/api/student/:studentId/dashboard', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    
+    const studentRes = await db.query('SELECT grade_level FROM students WHERE index_number = $1', [studentId]);
+    if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
+    
+    const gradeLevel = studentRes.rows[0].grade_level;
+
+    const subjectsRes = await db.query('SELECT * FROM subjects WHERE grade_level = $1', [gradeLevel]);
+    const ongoingSubjects = subjectsRes.rows.map(sub => ({
+      id: sub.id.toString(),
+      name: sub.name,
+      teacher: sub.teacher_name,
+      icon: sub.icon_name,
+      color: sub.theme_color,
+      bg: sub.bg_color
+    }));
+
+    const gradesRes = await db.query('SELECT * FROM student_grades WHERE student_id = $1 ORDER BY created_at DESC LIMIT 3', [studentId]);
+    const gradesData = gradesRes.rows.map(g => ({
+      id: g.id.toString(),
+      subject: g.subject_name,
+      type: g.assessment_type,
+      grade: g.grade,
+      gradeColor: g.grade.includes('A') ? '#15803D' : '#4338CA',
+      gradeBg: g.grade.includes('A') ? '#DCFCE7' : '#E0E7FF',
+      icon: "book", 
+      iconBg: "#E0F2FE",
+      iconColor: "#2563EB",
+      trend: g.trend,
+      trendColor: g.trend === 'arrow-trend-up' ? '#22C55E' : '#9CA3AF'
+    }));
+
+    const internshipsRes = await db.query('SELECT * FROM internships ORDER BY created_at DESC LIMIT 5');
+    const internshipsData = internshipsRes.rows.map(job => ({
+      id: job.id.toString(),
+      title: job.title,
+      company: `${job.company_name} • ${job.location}`,
+      type: job.employment_type,
+      bg: job.bg_color
+    }));
+
+    const attendanceStats = {
+      percentage: "85%",
+      status: "On Track",
+      message: "Excellent consistency this month.",
+      present: 170,
+      absent: 30
+    };
+
+    res.json({ ongoingSubjects, gradesData, internshipsData, attendanceStats });
+  } catch (error) {
+    console.error("Dashboard Fetch Error:", error.message);
+    res.status(500).json({ error: "Server error fetching dashboard data." });
+  }
+});
+
+
+// ---> NEW: REAL DB TEACHER DASHBOARD ROUTE <---
+app.get('/api/teacher/:email/dashboard', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1. Fetch Teacher Info
+    const teacherRes = await db.query('SELECT * FROM teachers WHERE email = $1', [cleanEmail]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    const teacher = teacherRes.rows[0];
+    const staffId = teacher.staff_id;
+
+    // 2. Query REAL Timetable (from the teacher_timetable table you created)
+    const timetableRes = await db.query('SELECT * FROM teacher_timetable WHERE staff_id = $1', [staffId]);
+    const todaysClasses = timetableRes.rows.map(cls => ({
+      id: cls.id.toString(),
+      subject: cls.subject,
+      grade: cls.grade,
+      time: cls.time_slot,
+      room: cls.room,
+      students: cls.student_count,
+      color: cls.theme_color || "#DBEAFE",
+      iconColor: cls.icon_color || "#2563EB"
+    }));
+
+    // 3. Query REAL Pending Tasks
+    const tasksRes = await db.query("SELECT * FROM teacher_tasks WHERE staff_id = $1 AND status = 'Pending'", [staffId]);
+    const pendingTasks = tasksRes.rows.map(task => ({
+      id: task.id.toString(),
+      title: task.title,
+      deadline: task.deadline,
+      type: task.task_type
+    }));
+
+    // 4. Query REAL Urgent Notice (Get the latest one)
+    const noticesRes = await db.query("SELECT * FROM urgent_notices WHERE target_audience = 'Staff' ORDER BY id DESC LIMIT 1");
+    let urgentNoticeData = null;
+    if (noticesRes.rows.length > 0) {
+      const n = noticesRes.rows[0];
+      urgentNoticeData = {
+        icon: n.icon_name,
+        title: n.title,
+        time: n.time_posted,
+        body: n.body
+      };
+    }
+
+    // 5. Calculate Quick Stats
+    const stats = {
+      totalClassesToday: todaysClasses.length,
+      pendingTasks: pendingTasks.length,
+      totalStudents: todaysClasses.reduce((acc, curr) => acc + curr.students, 0)
+    };
+
+    res.json({
+      teacher: { 
+        full_name: teacher.full_name, 
+        staff_id: teacher.staff_id, 
+        email: teacher.email, 
+        department: teacher.department, 
+        profile_photo: teacher.profile_photo_url 
+      },
+      todaysClasses,
+      pendingTasks,
+      urgentNoticeData,
+      stats
+    });
+
+  } catch (error) {
+    console.error("Teacher Dashboard Fetch Error:", error.message);
+    res.status(500).json({ error: "Server error fetching teacher dashboard." });
   }
 });
 

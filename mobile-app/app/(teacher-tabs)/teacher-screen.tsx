@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { 
   View, 
   Text, 
@@ -7,7 +7,8 @@ import {
   TouchableOpacity, 
   Dimensions,
   Image,
-  ImageBackground
+  ImageBackground,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context"; 
 import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
@@ -18,45 +19,60 @@ import { sharedCalendarEvents } from "../(auth)/calendar";
 
 const { width } = Dimensions.get("window");
 
-// --- TEACHER MOCK DATA ---
-const todaysClasses = [
-  { id: "c1", subject: "Science", grade: "Grade 10-A", time: "08:30 AM - 09:15 AM", room: "Lab 2", students: 34, color: "#DBEAFE", iconColor: "#2563EB" },
-  { id: "c2", subject: "Mathematics", grade: "Grade 10-B", time: "09:15 AM - 10:00 AM", room: "Room 102", students: 32, color: "#FEF3C7", iconColor: "#D97706" },
-  { id: "c3", subject: "Science", grade: "Grade 11-C", time: "11:00 AM - 11:45 AM", room: "Lab 1", students: 36, color: "#D1FAE5", iconColor: "#059669" },
-];
-
-const pendingTasks = [
-  { id: "t1", title: "Mark Morning Attendance", deadline: "Due in 30 mins", type: "urgent" },
-  { id: "t2", title: "Upload Term 2 Science Marks", deadline: "Due Tomorrow", type: "pending" },
-  { id: "t3", title: "Review PTA Meeting Notes", deadline: "Due in 3 Days", type: "normal" },
-];
-
-const urgentNoticeData = { 
-  icon: "bullhorn", 
-  title: "Staff Meeting at 1:30 PM", 
-  time: "1h ago", 
-  body: "Please assemble in the Main Staff Room immediately after the 5th period. Attendance is mandatory." 
-};
-
 export default function TeacherDashboard() {
   const router = useRouter(); 
   const params = useLocalSearchParams();
   
-  // Extract Data from Login
-  const [teacherData, setTeacherData] = useState({
-    full_name: (params.full_name as string) || "Teacher",
-    email: (params.email as string) || "",
-    staff_id: (params.staff_id as string) || "Staff Member",
-    profile_photo_url: (params.profile_photo_url as string) || "null"
+  // Extract initial parameters passed from the Login screen
+  const initialEmail = (params.email as string) || "";
+  const initialName = (params.full_name as string) || "Teacher";
+
+  // --- DYNAMIC STATE FOR REAL DATA ---
+  const [isLoading, setIsLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<any>({
+    teacher: { full_name: initialName, staff_id: "", email: initialEmail, profile_photo: null },
+    todaysClasses: [],
+    pendingTasks: [],
+    urgentNoticeData: null,
+    stats: { totalClassesToday: 0, pendingTasks: 0, totalStudents: 0 }
   });
 
-  const firstName = teacherData.full_name ? teacherData.full_name.split(" ")[0] : "Teacher";
+  // --- FETCH REAL DATA FROM BACKEND ---
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const fetchDashboardData = async () => {
+        if (!initialEmail) return;
+        setIsLoading(true);
+        try {
+          const timestamp = new Date().getTime();
+          // Adjust this IP to your machine's IP!
+          const response = await fetch(`http://172.20.10.7:5000/api/teacher/${initialEmail}/dashboard?t=${timestamp}`);
+          
+          if (response.ok && isActive) {
+            const data = await response.json();
+            setDashboardData(data);
+          }
+        } catch (error) {
+          console.error("Failed to fetch teacher dashboard data:", error);
+        } finally {
+          if (isActive) setIsLoading(false);
+        }
+      };
+
+      fetchDashboardData();
+      return () => { isActive = false; };
+    }, [initialEmail])
+  );
+
+  const firstName = dashboardData.teacher.full_name ? dashboardData.teacher.full_name.split(" ")[0] : "Teacher";
 
   const getNavParams = () => ({
-    full_name: teacherData.full_name,
-    email: teacherData.email,
-    staff_id: teacherData.staff_id,
-    profile_photo_url: teacherData.profile_photo_url
+    full_name: dashboardData.teacher.full_name,
+    email: dashboardData.teacher.email || initialEmail,
+    staff_id: dashboardData.teacher.staff_id,
+    profile_photo_url: dashboardData.teacher.profile_photo || "null"
   });
 
   // --- LATEST NEWS FILTERING LOGIC ---
@@ -72,6 +88,16 @@ export default function TeacherDashboard() {
     return new Date(dateString).toLocaleDateString('en-US', options);
   };
 
+  // Show a loading spinner while fetching the database
+  if (isLoading) {
+    return (
+      <View style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#2563EB" />
+        <Text style={{ marginTop: 10, color: "#64748B" }}>Loading Teacher Portal...</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={{ flex: 1 }}>
@@ -85,15 +111,15 @@ export default function TeacherDashboard() {
                 style={styles.avatarTouchTarget}
                 onPress={() => router.push({ pathname: "/(teacher-tabs)/teacher-profile", params: getNavParams() })}
               >
-                {teacherData.profile_photo_url && teacherData.profile_photo_url !== "null" ? (
-                  <Image source={{ uri: teacherData.profile_photo_url }} style={styles.avatarHeader} />
+                {dashboardData.teacher.profile_photo && dashboardData.teacher.profile_photo !== "null" ? (
+                  <Image source={{ uri: dashboardData.teacher.profile_photo }} style={styles.avatarHeader} />
                 ) : (
                   <FontAwesome6 name="circle-user" size={46} color="#2563EB" />
                 )}
               </TouchableOpacity>
               <View>
                 <Text style={styles.greeting}>Hello, {firstName}</Text>
-                <Text style={styles.subtext}>ID: {teacherData.staff_id}</Text>
+                <Text style={styles.subtext}>ID: {dashboardData.teacher.staff_id}</Text>
               </View>
             </View>
             <TouchableOpacity style={styles.notificationButton}>
@@ -108,29 +134,29 @@ export default function TeacherDashboard() {
             <View style={styles.statsContainer}>
               <View style={styles.statBox}>
                 <View style={[styles.statIconBg, { backgroundColor: "#DBEAFE" }]}><FontAwesome6 name="chalkboard-user" size={16} color="#2563EB" /></View>
-                <Text style={styles.statValue}>{todaysClasses.length}</Text>
+                <Text style={styles.statValue}>{dashboardData.stats.totalClassesToday}</Text>
                 <Text style={styles.statLabel}>Classes Today</Text>
               </View>
               <View style={styles.statBox}>
                 <View style={[styles.statIconBg, { backgroundColor: "#FEF3C7" }]}><FontAwesome6 name="clipboard-list" size={16} color="#D97706" /></View>
-                <Text style={styles.statValue}>2</Text>
+                <Text style={styles.statValue}>{dashboardData.stats.pendingTasks}</Text>
                 <Text style={styles.statLabel}>Pending Tasks</Text>
               </View>
               <View style={styles.statBox}>
                 <View style={[styles.statIconBg, { backgroundColor: "#D1FAE5" }]}><FontAwesome6 name="users" size={16} color="#059669" /></View>
-                <Text style={styles.statValue}>102</Text>
+                <Text style={styles.statValue}>{dashboardData.stats.totalStudents}</Text>
                 <Text style={styles.statLabel}>Total Students</Text>
               </View>
             </View>
 
-            {/* TODAY's SCHEDULE */}
+            {/* TODAY'S SCHEDULE */}
             <View style={styles.sectionHeaderNew}>
               <Text style={styles.sectionTitleNew}>TODAY'S SCHEDULE</Text>
               <TouchableOpacity><Text style={styles.sectionLink}>View Timetable</Text></TouchableOpacity>
             </View>
             
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.switcherScroll}>
-              {todaysClasses.map((cls, index) => (
+              {dashboardData.todaysClasses.map((cls: any, index: number) => (
                 <TouchableOpacity key={index} style={styles.classCard} activeOpacity={0.8}>
                   <View style={styles.classCardHeader}>
                     <View style={[styles.classIconBg, { backgroundColor: cls.color }]}>
@@ -153,27 +179,33 @@ export default function TeacherDashboard() {
                   </View>
                 </TouchableOpacity>
               ))}
+              
+              {dashboardData.todaysClasses.length === 0 && (
+                <Text style={{ color: "#64748B", fontStyle: "italic", marginTop: 10 }}>No classes scheduled for today.</Text>
+              )}
             </ScrollView>
 
-            {/* URGENT NOTICE */}
-            <View style={styles.urgentNoticeCard}>
-              <View style={styles.noticeHeader}>
-                <MaterialCommunityIcons name={urgentNoticeData.icon as any} size={28} color="#EF4444" />
-                <View style={styles.noticeTitleBlock}>
-                  <Text style={styles.noticeType}>STAFF NOTICE</Text>
-                  <Text style={styles.noticeTitle}>{urgentNoticeData.title}</Text>
+            {/* URGENT NOTICE (Only renders if there is data in the DB) */}
+            {dashboardData.urgentNoticeData && (
+              <View style={styles.urgentNoticeCard}>
+                <View style={styles.noticeHeader}>
+                  <MaterialCommunityIcons name={dashboardData.urgentNoticeData.icon as any} size={28} color="#EF4444" />
+                  <View style={styles.noticeTitleBlock}>
+                    <Text style={styles.noticeType}>STAFF NOTICE</Text>
+                    <Text style={styles.noticeTitle}>{dashboardData.urgentNoticeData.title}</Text>
+                  </View>
+                  <Text style={styles.noticeTime}>{dashboardData.urgentNoticeData.time}</Text>
                 </View>
-                <Text style={styles.noticeTime}>{urgentNoticeData.time}</Text>
+                <Text style={styles.noticeBody}>{dashboardData.urgentNoticeData.body}</Text>
               </View>
-              <Text style={styles.noticeBody}>{urgentNoticeData.body}</Text>
-            </View>
+            )}
 
             {/* TO-DO / PENDING TASKS */}
             <View style={styles.sectionHeaderNew}>
               <Text style={styles.sectionTitleNew}>PENDING TASKS</Text>
             </View>
             <View style={styles.tasksContainer}>
-              {pendingTasks.map((task) => (
+              {dashboardData.pendingTasks.map((task: any) => (
                 <TouchableOpacity key={task.id} style={styles.taskRow} activeOpacity={0.7}>
                   <View style={[styles.taskCheckbox, task.type === 'urgent' && styles.taskCheckboxUrgent]}>
                     {task.type === 'urgent' && <View style={styles.urgentDot} />}
@@ -185,6 +217,10 @@ export default function TeacherDashboard() {
                   <FontAwesome6 name="chevron-right" size={14} color="#CBD5E1" />
                 </TouchableOpacity>
               ))}
+              
+              {dashboardData.pendingTasks.length === 0 && (
+                <Text style={{ color: "#16A34A", textAlign: "center", paddingVertical: 10 }}>All caught up!</Text>
+              )}
             </View>
 
             {/* LATEST NEWS SECTION */}
@@ -215,7 +251,7 @@ export default function TeacherDashboard() {
         <View style={styles.bottomTabBar}>
           {[ 
             { icon: "home", label: "Home", route: "/(teacher-tabs)/teacher-screen" }, 
-            { icon: "users", label: "Classes", route: null }, // Placeholder for future classes screen
+            { icon: "users", label: "Classes", route: null }, 
             { icon: "calendar", label: "Calendar", route: "/(auth)/calendar" }, 
             { icon: "info", label: "About Us", route: "/(auth)/about-us" } 
           ].map((tab, index) => {
