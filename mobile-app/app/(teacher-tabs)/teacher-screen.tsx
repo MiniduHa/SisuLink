@@ -8,7 +8,8 @@ import {
   Dimensions,
   Image,
   ImageBackground,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context"; 
 import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
@@ -36,6 +37,11 @@ export default function TeacherDashboard() {
     urgentNoticeData: null,
     stats: { totalClassesToday: 0, pendingTasks: 0, totalStudents: 0 }
   });
+
+  // --- MODAL STATE ---
+  const [isStudentsModalVisible, setStudentsModalVisible] = useState(false);
+  const [teacherStudents, setTeacherStudents] = useState<any[]>([]);
+  const [isStudentsLoading, setIsStudentsLoading] = useState(false);
 
   // --- FETCH REAL DATA FROM BACKEND ---
   useFocusEffect(
@@ -74,6 +80,25 @@ export default function TeacherDashboard() {
     staff_id: dashboardData.teacher.staff_id,
     profile_photo_url: dashboardData.teacher.profile_photo || "null"
   });
+
+  const handleOpenStudentsModal = async () => {
+    setStudentsModalVisible(true);
+    if (!initialEmail || teacherStudents.length > 0) return;
+    
+    setIsStudentsLoading(true);
+    try {
+      const timestamp = new Date().getTime();
+      const response = await fetch(`http://172.20.10.7:5000/api/teacher/${initialEmail}/students?t=${timestamp}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTeacherStudents(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch teacher students:", error);
+    } finally {
+      setIsStudentsLoading(false);
+    }
+  };
 
   // --- LATEST NEWS FILTERING LOGIC ---
   const pastSpecialEvents = sharedCalendarEvents
@@ -142,17 +167,19 @@ export default function TeacherDashboard() {
                 <Text style={styles.statValue}>{dashboardData.stats.pendingTasks}</Text>
                 <Text style={styles.statLabel}>Pending Tasks</Text>
               </View>
-              <View style={styles.statBox}>
+              <TouchableOpacity style={styles.statBox} activeOpacity={0.7} onPress={handleOpenStudentsModal}>
                 <View style={[styles.statIconBg, { backgroundColor: "#D1FAE5" }]}><FontAwesome6 name="users" size={16} color="#059669" /></View>
                 <Text style={styles.statValue}>{dashboardData.stats.totalStudents}</Text>
                 <Text style={styles.statLabel}>Total Students</Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* TODAY'S SCHEDULE */}
             <View style={styles.sectionHeaderNew}>
               <Text style={styles.sectionTitleNew}>TODAY'S SCHEDULE</Text>
-              <TouchableOpacity><Text style={styles.sectionLink}>View Timetable</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push({ pathname: "/(teacher-tabs)/teacher-timetable", params: getNavParams() })}>
+                <Text style={styles.sectionLink}>View Timetable</Text>
+              </TouchableOpacity>
             </View>
             
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.switcherScroll}>
@@ -274,6 +301,62 @@ export default function TeacherDashboard() {
           })}
         </View>
 
+        {/* MODAL FOR STUDENTS LIST */}
+        <Modal
+          visible={isStudentsModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setStudentsModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>My Students</Text>
+                <TouchableOpacity onPress={() => setStudentsModalVisible(false)} style={styles.closeModalButton}>
+                  <Feather name="x" size={24} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+              
+              {isStudentsLoading ? (
+                <View style={styles.modalLoading}>
+                  <ActivityIndicator size="large" color="#2563EB" />
+                  <Text style={styles.modalLoadingText}>Loading students...</Text>
+                </View>
+              ) : (
+                <ScrollView contentContainerStyle={styles.studentsListScroll} showsVerticalScrollIndicator={false}>
+                  {teacherStudents.length > 0 ? (
+                    teacherStudents.map((student: any) => (
+                      <View key={student.id} style={styles.studentCardRow}>
+                        <View style={styles.studentAvatar}>
+                          {student.profile_photo_url && student.profile_photo_url !== "null" ? (
+                            <Image source={{ uri: student.profile_photo_url }} style={styles.studentAvatarImg} />
+                          ) : (
+                            <Text style={styles.studentAvatarText}>{student.first_name[0]}</Text>
+                          )}
+                        </View>
+                        <View style={styles.studentDetails}>
+                          <Text style={styles.studentName}>{student.first_name} {student.last_name}</Text>
+                          <Text style={styles.studentMeta}>{student.grade_level} - {student.section} • ID: {student.index_number}</Text>
+                        </View>
+                        <View style={styles.studentActions}>
+                          <TouchableOpacity style={styles.actionIconBtn}>
+                            <Feather name="phone" size={16} color="#2563EB" />
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.actionIconBtn}>
+                            <Feather name="mail" size={16} color="#2563EB" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.noStudentsText}>No students assigned to your classes yet.</Text>
+                  )}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </Modal>
+
       </View>
     </SafeAreaView>
   );
@@ -349,5 +432,25 @@ const styles = StyleSheet.create({
   // Bottom Tab Bar
   bottomTabBar: { flexDirection: "row", justifyContent: "space-around", backgroundColor: "#FFFFFF", paddingVertical: 12, paddingHorizontal: 20, borderTopWidth: 1, borderTopColor: "#E2E8F0", position: "absolute", bottom: 0, left: 0, right: 0 },
   tabItem: { alignItems: "center", flex: 1 }, 
-  tabLabel: { fontSize: 10, marginTop: 4, fontWeight: "600" }
+  tabLabel: { fontSize: 10, marginTop: 4, fontWeight: "600" },
+
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.4)", justifyContent: "flex-end" },
+  modalContent: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, height: Dimensions.get('window').height * 0.75, paddingBottom: 20 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
+  modalTitle: { fontSize: 18, fontWeight: "bold", color: "#1E293B" },
+  closeModalButton: { padding: 4, backgroundColor: "#F8FAFC", borderRadius: 20 },
+  modalLoading: { flex: 1, justifyContent: "center", alignItems: "center" },
+  modalLoadingText: { marginTop: 12, color: "#64748B", fontSize: 14, fontWeight: "500" },
+  studentsListScroll: { padding: 20, paddingBottom: 40 },
+  studentCardRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: "#F1F5F9", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
+  studentAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#DBEAFE", justifyContent: "center", alignItems: "center", marginRight: 14, overflow: "hidden" },
+  studentAvatarImg: { width: "100%", height: "100%" },
+  studentAvatarText: { fontSize: 18, fontWeight: "bold", color: "#2563EB" },
+  studentDetails: { flex: 1 },
+  studentName: { fontSize: 15, fontWeight: "bold", color: "#1E293B", marginBottom: 2 },
+  studentMeta: { fontSize: 12, color: "#64748B", fontWeight: "500" },
+  studentActions: { flexDirection: "row", gap: 10 },
+  actionIconBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#EFF6FF", justifyContent: "center", alignItems: "center" },
+  noStudentsText: { textAlign: "center", marginTop: 40, color: "#64748B", fontSize: 14, fontStyle: "italic" }
 });

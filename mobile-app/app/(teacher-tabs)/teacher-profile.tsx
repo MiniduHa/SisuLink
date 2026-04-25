@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
 import { 
   View, 
   Text, 
@@ -6,11 +6,15 @@ import {
   ScrollView, 
   TouchableOpacity, 
   Image,
-  Alert
+  Alert,
+  Platform,
+  ActionSheetIOS,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, MaterialIcons } from "@expo/vector-icons";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 
 export default function TeacherProfileScreen() {
   const router = useRouter();
@@ -20,7 +24,16 @@ export default function TeacherProfileScreen() {
   const fullName = (params.full_name as string) || "Teacher Name";
   const email = (params.email as string) || "teacher@school.edu";
   const staffId = (params.staff_id as string) || "TCH-000";
-  const profilePhotoUrl = (params.profile_photo_url as string) || "null";
+  const initialPhotoUrl = (params.profile_photo_url as string) || "null";
+
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState(initialPhotoUrl);
+  const [profileData, setProfileData] = useState<any>({
+    department: "Loading...",
+    medium: "Loading...",
+    subject: "Loading...",
+    school_name: "Loading..."
+  });
+  const [isPhotoUploading, setIsPhotoUploading] = useState(false);
 
   // Package params for the bottom tab bar to pass around
   const getNavParams = () => ({
@@ -29,6 +42,130 @@ export default function TeacherProfileScreen() {
     staff_id: staffId,
     profile_photo_url: profilePhotoUrl
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      const fetchProfileData = async () => {
+        try {
+          const timestamp = new Date().getTime();
+          const response = await fetch(`http://172.20.10.7:5000/api/teacher/profile/${email}?t=${timestamp}`);
+          if (response.ok && isActive) {
+            const data = await response.json();
+            setProfileData({
+              department: data.department || "Not Set",
+              medium: data.medium || "Not Set",
+              subject: data.subject || "Not Set",
+              school_name: data.school_name || "Not Set"
+            });
+            if (data.profile_photo_url) {
+              setProfilePhotoUrl(data.profile_photo_url);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch teacher profile:", error);
+        }
+      };
+      if (email) fetchProfileData();
+      return () => { isActive = false; };
+    }, [email])
+  );
+
+  const handleEditAvatar = () => {
+    const options = ["Take Photo", "Choose from Gallery", "Remove Photo", "Cancel"];
+    const destructiveButtonIndex = 2;
+    const cancelButtonIndex = 3;
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex, destructiveButtonIndex },
+        (buttonIndex) => {
+          if (buttonIndex === 0) handleCamera();
+          else if (buttonIndex === 1) handleGallery();
+          else if (buttonIndex === 2) handleRemovePhoto();
+        }
+      );
+    } else {
+      Alert.alert("Profile Picture", "Choose an option", [
+        { text: "Take Photo", onPress: handleCamera },
+        { text: "Choose from Gallery", onPress: handleGallery },
+        { text: "Remove Photo", onPress: handleRemovePhoto, style: "destructive" },
+        { text: "Cancel", style: "cancel" }
+      ]);
+    }
+  };
+
+  const uploadPhoto = async (uri: string) => {
+    setIsPhotoUploading(true);
+    const formData = new FormData();
+    const fileType = uri.split('.').pop() || 'jpg';
+    
+    formData.append('photo', {
+      uri,
+      name: `photo.${fileType}`,
+      type: `image/${fileType}`
+    } as any);
+    formData.append('email', email);
+
+    try {
+      const response = await fetch(`http://172.20.10.7:5000/api/teacher/upload-avatar`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      const result = await response.json();
+      if (response.ok && result.photoUrl) {
+        setProfilePhotoUrl(result.photoUrl);
+      } else {
+        Alert.alert("Upload Failed", result.error || "Something went wrong.");
+      }
+    } catch (error) {
+      console.error("Error uploading photo:", error);
+      Alert.alert("Error", "Could not connect to the server.");
+    } finally {
+      setIsPhotoUploading(false);
+    }
+  };
+
+  const handleCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') return Alert.alert("Permission required", "Camera access is needed.");
+    
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true, aspect: [1, 1], quality: 0.5
+    });
+    if (!result.canceled && result.assets[0]) {
+      uploadPhoto(result.assets[0].uri);
+    }
+  };
+
+  const handleGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return Alert.alert("Permission required", "Gallery access is needed.");
+    
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [1, 1], quality: 0.5
+    });
+    if (!result.canceled && result.assets[0]) {
+      uploadPhoto(result.assets[0].uri);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    setProfilePhotoUrl("null");
+    try {
+      await fetch(`http://172.20.10.7:5000/api/teacher/remove-avatar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+    } catch (error) {
+      console.error("Error removing photo:", error);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -71,7 +208,12 @@ export default function TeacherProfileScreen() {
                   <FontAwesome6 name="user-tie" size={40} color="#2563EB" />
                 </View>
               )}
-              <TouchableOpacity style={styles.editAvatarBtn} activeOpacity={0.8}>
+              {isPhotoUploading && (
+                <View style={[StyleSheet.absoluteFill, styles.avatarOverlay]}>
+                  <ActivityIndicator color={"#FFFFFF"} />
+                </View>
+              )}
+              <TouchableOpacity style={styles.editAvatarBtn} activeOpacity={0.8} onPress={handleEditAvatar} disabled={isPhotoUploading}>
                 <FontAwesome6 name="camera" size={14} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
@@ -96,12 +238,36 @@ export default function TeacherProfileScreen() {
             <View style={styles.divider} />
 
             <View style={styles.infoRow}>
+              <View style={[styles.iconBg, { backgroundColor: '#FCE7F3' }]}>
+                <FontAwesome6 name="school" size={16} color="#DB2777" />
+              </View>
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoLabel}>Teaching School</Text>
+                <Text style={styles.infoValue}>{profileData.school_name}</Text>
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.infoRow}>
               <View style={[styles.iconBg, { backgroundColor: '#FEF3C7' }]}>
                 <Feather name="book-open" size={18} color="#D97706" />
               </View>
               <View style={styles.infoTextContainer}>
                 <Text style={styles.infoLabel}>Department</Text>
-                <Text style={styles.infoValue}>Science Stream</Text>
+                <Text style={styles.infoValue}>{profileData.department}</Text>
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.infoRow}>
+              <View style={[styles.iconBg, { backgroundColor: '#E0E7FF' }]}>
+                <FontAwesome6 name="book-bookmark" size={16} color="#4F46E5" />
+              </View>
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoLabel}>Teaching Subject</Text>
+                <Text style={styles.infoValue}>{profileData.subject}</Text>
               </View>
             </View>
 
@@ -113,7 +279,7 @@ export default function TeacherProfileScreen() {
               </View>
               <View style={styles.infoTextContainer}>
                 <Text style={styles.infoLabel}>Teaching Medium</Text>
-                <Text style={styles.infoValue}>English Medium</Text>
+                <Text style={styles.infoValue}>{profileData.medium}</Text>
               </View>
             </View>
           </View>
@@ -122,25 +288,9 @@ export default function TeacherProfileScreen() {
           <View style={styles.infoCard}>
             <Text style={styles.cardTitle}>Account Settings</Text>
             
-            <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.settingRow} activeOpacity={0.7} onPress={() => router.push("/(auth)/forgot-password")}>
               <Feather name="lock" size={20} color="#64748B" />
               <Text style={styles.settingText}>Change Password</Text>
-              <FontAwesome6 name="chevron-right" size={14} color="#CBD5E1" />
-            </TouchableOpacity>
-            
-            <View style={styles.divider} />
-
-            <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
-              <Feather name="bell" size={20} color="#64748B" />
-              <Text style={styles.settingText}>Notifications</Text>
-              <FontAwesome6 name="chevron-right" size={14} color="#CBD5E1" />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
-              <Feather name="shield" size={20} color="#64748B" />
-              <Text style={styles.settingText}>Privacy & Security</Text>
               <FontAwesome6 name="chevron-right" size={14} color="#CBD5E1" />
             </TouchableOpacity>
           </View>
@@ -201,6 +351,7 @@ const styles = StyleSheet.create({
   avatarContainer: { position: "relative", marginBottom: 15 },
   avatarImage: { width: 100, height: 100, borderRadius: 50, borderWidth: 4, borderColor: "#FFFFFF" },
   avatarPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: "#DBEAFE", justifyContent: "center", alignItems: "center", borderWidth: 4, borderColor: "#FFFFFF" },
+  avatarOverlay: { borderRadius: 50, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
   editAvatarBtn: { position: "absolute", bottom: 0, right: 0, backgroundColor: "#2563EB", width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: "#FFFFFF" },
   userName: { fontSize: 24, fontWeight: "bold", color: "#1E293B" },
   userRole: { fontSize: 15, color: "#64748B", marginTop: 4, fontWeight: "500" },

@@ -383,48 +383,66 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
     const teacherRes = await db.query('SELECT * FROM teachers WHERE email = $1', [cleanEmail]);
     if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
     const teacher = teacherRes.rows[0];
-    const staffId = teacher.staff_id;
+    const teacherDbId = teacher.id;
 
-    // 2. Query REAL Timetable (from the teacher_timetable table you created)
-    const timetableRes = await db.query('SELECT * FROM teacher_timetable WHERE staff_id = $1', [staffId]);
-    const todaysClasses = timetableRes.rows.map(cls => ({
-      id: cls.id.toString(),
-      subject: cls.subject,
-      grade: cls.grade,
-      time: cls.time_slot,
-      room: cls.room,
-      students: cls.student_count,
-      color: cls.theme_color || "#DBEAFE",
-      iconColor: cls.icon_color || "#2563EB"
-    }));
+    // Determine current day of the week (e.g., 'Monday')
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const todayName = days[new Date().getDay()];
 
-    // 3. Query REAL Pending Tasks
-    const tasksRes = await db.query("SELECT * FROM teacher_tasks WHERE staff_id = $1 AND status = 'Pending'", [staffId]);
-    const pendingTasks = tasksRes.rows.map(task => ({
-      id: task.id.toString(),
-      title: task.title,
-      deadline: task.deadline,
-      type: task.task_type
-    }));
+    // 2. Query REAL Timetable from class_timetables
+    const timetableRes = await db.query(
+      `SELECT ct.id, ct.subject, ct.time_slot, c.grade, c.section, c.room_number 
+       FROM class_timetables ct 
+       JOIN classes c ON ct.class_id = c.id 
+       WHERE ct.teacher_id = $1 AND ct.day_of_week = $2
+       ORDER BY ct.time_slot ASC`, 
+      [teacherDbId, todayName]
+    );
 
-    // 4. Query REAL Urgent Notice (Get the latest one)
-    const noticesRes = await db.query("SELECT * FROM urgent_notices WHERE target_audience = 'Staff' ORDER BY id DESC LIMIT 1");
-    let urgentNoticeData = null;
-    if (noticesRes.rows.length > 0) {
-      const n = noticesRes.rows[0];
-      urgentNoticeData = {
-        icon: n.icon_name,
-        title: n.title,
-        time: n.time_posted,
-        body: n.body
+    const todaysClasses = timetableRes.rows.map((cls, index) => {
+      // Rotate colors for nice UI
+      const colors = ["#DBEAFE", "#D1FAE5", "#FEF3C7", "#FCE7F3", "#E0E7FF"];
+      const iconColors = ["#2563EB", "#059669", "#D97706", "#DB2777", "#4F46E5"];
+      
+      return {
+        id: (cls.id || index).toString(),
+        subject: cls.subject,
+        grade: `${cls.grade} - ${cls.section}`,
+        time: cls.time_slot,
+        room: cls.room_number || "TBD",
+        students: 40, // standard capacity
+        color: colors[index % colors.length],
+        iconColor: iconColors[index % iconColors.length]
       };
+    });
+
+    // 3. pendingTasks & notices mocked (since tables do not exist yet)
+    const pendingTasks = [];
+    const urgentNoticeData = null;
+
+    // 4. Calculate actual total distinct students taught by this teacher based on enrolled subjects
+    let realTotalStudents = 0;
+    try {
+      const studentCountRes = await db.query(
+        `SELECT COUNT(DISTINCT s.id) as count
+         FROM students s
+         WHERE s.school_id = $1
+         AND EXISTS (
+           SELECT 1 FROM class_timetables ct
+           WHERE ct.teacher_id = $2
+           AND s.subjects ? ct.subject
+         )`, 
+        [teacher.school_id, teacherDbId]
+      );
+      realTotalStudents = parseInt(studentCountRes.rows[0].count, 10);
+    } catch (e) {
+      console.error("Error fetching distinct student count:", e);
     }
 
-    // 5. Calculate Quick Stats
     const stats = {
       totalClassesToday: todaysClasses.length,
       pendingTasks: pendingTasks.length,
-      totalStudents: todaysClasses.reduce((acc, curr) => acc + curr.students, 0)
+      totalStudents: realTotalStudents
     };
 
     res.json({
@@ -447,8 +465,119 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
   }
 });
 
+// ---> NEW: TEACHER FULL TIMETABLE ROUTE <---
+app.get('/api/teacher/:email/timetable', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
 
-// --- PROFILE ROUTING ---
+    const teacherRes = await db.query('SELECT id FROM teachers WHERE email = $1', [cleanEmail]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    const teacherDbId = teacherRes.rows[0].id;
+
+    const result = await db.query(
+      `SELECT ct.day_of_week, ct.period_number, ct.time_slot, ct.subject, c.grade, c.section, c.room_number 
+       FROM class_timetables ct 
+       JOIN classes c ON ct.class_id = c.id 
+       WHERE ct.teacher_id = $1
+       ORDER BY ct.time_slot ASC`, 
+      [teacherDbId]
+    );
+
+    res.json(result.rows);
+  } catch (error) { 
+    console.error("Teacher Timetable error", error);
+    res.status(500).json({ error: "Server error fetching teacher timetable." }); 
+  }
+});
+
+// ---> NEW: TEACHER STUDENTS LIST ROUTE <---
+app.get('/api/teacher/:email/students', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+
+    const teacherRes = await db.query('SELECT id, school_id FROM teachers WHERE email = $1', [cleanEmail]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    const teacherDbId = teacherRes.rows[0].id;
+    const schoolId = teacherRes.rows[0].school_id;
+
+    // Fetch distinct students associated with the subjects the teacher teaches
+    const studentsRes = await db.query(
+      `SELECT DISTINCT s.id, s.first_name, s.last_name, s.email, s.index_number, s.grade_level, s.section, s.profile_photo_url, s.parent_email, s.parent_phone
+       FROM students s
+       WHERE s.school_id = $1
+       AND EXISTS (
+         SELECT 1 FROM class_timetables ct
+         WHERE ct.teacher_id = $2
+         AND s.subjects ? ct.subject
+       )
+       ORDER BY s.grade_level, s.section, s.first_name`, 
+      [schoolId, teacherDbId]
+    );
+
+    res.json(studentsRes.rows);
+  } catch (error) { 
+    console.error("Teacher Students App error", error);
+    res.status(500).json({ error: "Server error fetching students connected to teacher." }); 
+  }
+});
+
+// --- TEACHER PROFILE API ---
+app.get('/api/teacher/profile/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+    const result = await db.query(
+      'SELECT id, staff_id, full_name, email, department, medium, subject, school_name, profile_photo_url FROM teachers WHERE email = $1',
+      [cleanEmail]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Teacher Profile Error:", error);
+    res.status(500).json({ error: "Server error fetching teacher profile." });
+  }
+});
+
+app.post('/api/teacher/upload-avatar', upload.single('photo'), async (req, res) => {
+  try {
+    const { email } = req.body;
+    const cleanEmail = email.toLowerCase().trim();
+
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No photo uploaded." });
+
+    const fileExt = file.originalname ? file.originalname.split('.').pop() : 'jpg';
+    const fileName = `teacher_${cleanEmail.replace(/[@.]/g, '_')}_${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file.buffer, { contentType: file.mimetype, upsert: true });
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+    await db.query('UPDATE teachers SET profile_photo_url = $1 WHERE email = $2', [publicUrl, cleanEmail]);
+
+    res.json({ message: "Photo uploaded successfully", photoUrl: publicUrl });
+  } catch (error) {
+    console.error("Error uploading teacher avatar:", error);
+    res.status(500).json({ error: "Server error during teacher photo upload." });
+  }
+});
+
+app.post('/api/teacher/remove-avatar', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const cleanEmail = email.toLowerCase().trim();
+    await db.query('UPDATE teachers SET profile_photo_url = NULL WHERE email = $1', [cleanEmail]);
+    res.json({ message: "Photo removed successfully" });
+  } catch (error) {
+    console.error("Error removing teacher avatar:", error);
+    res.status(500).json({ error: "Server error removing teacher photo." });
+  }
+});
+
+// --- STUDENT PROFILE ROUTING ---
 app.post('/api/profile/upload-avatar', upload.single('photo'), async (req, res) => {
   try {
     const { studentId } = req.body;
