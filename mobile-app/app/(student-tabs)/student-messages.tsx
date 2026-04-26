@@ -184,33 +184,6 @@ export default function StudentMessagesScreen() {
     return matchesFilter && (nameMatch || snippetMatch);
   });
 
-  const renderBottomTabBar = () => (
-    <View style={styles.bottomTabBar}>
-      {[ 
-        { icon: "home", label: "Home", route: "/(student-tabs)/student-screen" }, 
-        { icon: "message-square", label: "Messages", route: "/(student-tabs)/student-messages" }, 
-        { icon: "calendar", label: "Calendar", route: "/(student-tabs)/calendar" }, 
-        { icon: "user", label: "Profile", route: "/(student-tabs)/student-profile" } 
-      ].map((tab, index) => {
-        const isActive = index === 1; 
-        return (
-          <TouchableOpacity 
-            key={index} 
-            style={styles.tabItem} 
-            onPress={() => { 
-              if (tab.route && !isActive) {
-                router.push({ pathname: tab.route as any, params: params });
-              }
-            }}
-          >
-            <Feather name={tab.icon as any} size={20} color={isActive ? "#2563EB" : "#64748B"} />
-            <Text style={[styles.tabLabel, { color: isActive ? "#2563EB" : "#64748B" }]}>{tab.label}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-
   if (activeChat) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -302,8 +275,6 @@ export default function StudentMessagesScreen() {
           <Feather name="plus" size={24} color="#FFFFFF" />
         </TouchableOpacity>
 
-        {renderBottomTabBar()}
-
         <Modal visible={isContactModalVisible} animationType="slide" transparent={true}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -348,10 +319,7 @@ const styles = StyleSheet.create({
   roleText: { fontSize: 12, color: "#64748B", marginTop: 2 },
   timeText: { fontSize: 11, color: "#9CA3AF" },
   snippetText: { fontSize: 13, color: "#64748B", marginTop: 4 },
-  fab: { position: "absolute", bottom: 90, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: "#2563EB", justifyContent: "center", alignItems: "center" },
-  bottomTabBar: { flexDirection: "row", justifyContent: "space-around", backgroundColor: "#FFFFFF", paddingVertical: 12, borderTopWidth: 1, borderTopColor: "#E2E8F0", position: "absolute", bottom: 0, left: 0, right: 0 },
-  tabItem: { alignItems: "center", flex: 1 },
-  tabLabel: { fontSize: 10, marginTop: 4, color: "#64748B" },
+  fab: { position: "absolute", bottom: 20, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: "#2563EB", justifyContent: "center", alignItems: "center" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
   modalContent: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, minHeight: "50%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },

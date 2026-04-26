@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react"; // <-- Added useEffect
+import React, { useState, useRef, useEffect } from "react"; 
 import { 
   View, 
   Text, 
@@ -13,7 +13,7 @@ import {
   Alert,
   Image,
   Linking,
-  BackHandler // <-- Added BackHandler
+  BackHandler 
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -22,14 +22,6 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 
 const { width } = Dimensions.get("window");
-
-// --- MOCK DATA ---
-const initialMessages = [
-  { id: '1', sender: "Mrs. N. Silva", role: "Science Teacher", snippet: "Arjun did a fantastic job on his science project today! Please make sure he...", time: "10:30 AM", unread: true, type: "teacher" },
-  { id: '2', sender: "Accounts Office", role: "Administration", snippet: "Your payment for Term 3 facility fees has been received and processed.", time: "Yesterday", unread: false, type: "admin" },
-  { id: '3', sender: "Principal's Office", role: "School Admin", snippet: "Important notice regarding the upcoming sports meet postponement due to weather.", time: "Oct 12", unread: true, type: "admin" },
-  { id: '4', sender: "Mr. K. Perera", role: "Mathematics Teacher", snippet: "Please remind Fatima to complete the calculus worksheet before Friday's class.", time: "Oct 10", unread: false, type: "teacher" },
-];
 
 type Attachment = { uri: string, type: 'image' | 'document', name: string };
 
@@ -40,29 +32,6 @@ type ChatMessage = {
   time: string;
   attachment?: Attachment | null;
 };
-
-const initialChatHistories: Record<string, ChatMessage[]> = {
-  "Mrs. N. Silva": [
-    { id: 1, text: "Good morning! Just checking in on Arjun's progress.", sender: "me", time: "09:00 AM" },
-    { id: 2, text: "Good morning! Arjun did a fantastic job on his science project today! Please make sure he...", sender: "other", time: "10:30 AM" },
-  ],
-  "Accounts Office": [
-    { id: 2, text: "Your payment for Term 3 facility fees has been received and processed.", sender: "other", time: "Yesterday" },
-  ],
-  "Principal's Office": [
-    { id: 1, text: "Important notice regarding the upcoming sports meet postponement due to weather.", sender: "other", time: "Oct 12" },
-  ],
-  "Mr. K. Perera": [
-    { id: 1, text: "Please remind Fatima to complete the calculus worksheet before Friday's class.", sender: "other", time: "Oct 10" },
-  ]
-};
-
-const availableContacts = [
-  { id: 'c2', name: "Mrs. N. Silva", role: "Class Teacher & Science", type: "teacher" },
-  { id: 'c3', name: "Mr. K. Perera", role: "Mathematics", type: "teacher" },
-  { id: 'c4', name: "Ms. E. Fernando", role: "English", type: "teacher" },
-  { id: 'c5', name: "Mr. S. Bandara", role: "History", type: "teacher" },
-];
 
 export default function ParentMessagesScreen() {
   const router = useRouter();
@@ -128,7 +97,6 @@ export default function ParentMessagesScreen() {
       const response = await fetch(`http://172.20.10.7:5000/api/messages/Parent/${userEmail}/history/${otherEmail}`);
       if (response.ok) {
         const data = await response.json();
-        // Format backend data to frontend ChatMessage format
         const formatted = data.map((m: any) => ({
           id: m.id,
           text: m.content,
@@ -138,7 +106,6 @@ export default function ParentMessagesScreen() {
         }));
         setChatHistory(formatted);
         
-        // Mark last message as read if it's from others
         const unreadMsg = data.find((m: any) => !m.is_read && m.receiver_email === userEmail);
         if (unreadMsg) {
           fetch(`http://172.20.10.7:5000/api/messages/read/${unreadMsg.id}`, { method: 'PUT' });
@@ -155,7 +122,6 @@ export default function ParentMessagesScreen() {
     fetchConversations();
     fetchContacts();
     
-    // Auto-refresh messages every 10 seconds
     const interval = setInterval(fetchConversations, 10000);
     return () => clearInterval(interval);
   }, [userEmail]);
@@ -173,6 +139,7 @@ export default function ParentMessagesScreen() {
 
 
   // --- ACTIONS ---
+  // FIXED: Changed signature to safely accept a single object!
   const handleOpenChat = (contact: any) => {
     setMessages(messages.map(msg => msg.other_email === contact.email ? { ...msg, unread: false } : msg));
     setContactModalVisible(false);
@@ -298,28 +265,26 @@ export default function ParentMessagesScreen() {
 
   const currentChatLog = chatHistory;
 
+  // FIXED: Perfectly matched the bottom bar from parent-screen.tsx
   const renderBottomTabBar = () => (
     <View style={styles.bottomTabBar}>
       {[ 
         { icon: "home", label: "Home", route: "/(parent-tabs)/parent-screen" }, 
-        { icon: "users", label: "Children", route: null }, 
         { icon: "message-square", label: "Messages", route: "/(parent-tabs)/parent-messages" }, 
-        { icon: "calendar", label: "Calendar", route: null }, 
-        { icon: "info", label: "About Us", route: null } 
-      ].map((tab, index) => {
-        const isActive = index === 2; 
+        { icon: "calendar", label: "Calendar", route: "/(auth)/calendar" }, 
+        { icon: "info", label: "About Us", route: "/(auth)/about-us" } 
+      ].map((tab: any, index: number) => {
+        const isActive = index === 1; // "Messages" is active
         return (
           <TouchableOpacity 
             key={index} 
-            style={styles.tabItem} 
-            onPress={() => { 
+            style={styles.tabItem}
+            onPress={() => {
               if (tab.route && !isActive) {
-                router.push({
-                  pathname: tab.route as any,
-                  params: params 
-                });
+                router.navigate({ pathname: tab.route as any, params: params as any });
               }
             }}
+            activeOpacity={0.7}
           >
             <Feather name={tab.icon as any} size={20} color={isActive ? "#2563EB" : "#64748B"} />
             <Text style={[styles.tabLabel, { color: isActive ? "#2563EB" : "#64748B" }]}>{tab.label}</Text>
@@ -535,7 +500,8 @@ export default function ParentMessagesScreen() {
               <TouchableOpacity 
                 key={msg.id} 
                 style={[styles.messageCard, msg.unread && styles.messageCardUnread]} 
-                onPress={() => handleOpenChat(msg.sender, msg.role, msg.type)}
+                // FIXED: Passing a safe, single object here!
+                onPress={() => handleOpenChat({ name: msg.sender, role: msg.role, type: msg.type, email: msg.other_email })}
                 activeOpacity={0.7}
               >
                 <View style={[styles.avatarBg, msg.type === 'admin' ? { backgroundColor: '#FEF3C7' } : { backgroundColor: '#DBEAFE' }]}>
@@ -552,7 +518,7 @@ export default function ParentMessagesScreen() {
                   </View>
                   <Text style={styles.roleText}>{msg.role}</Text>
                   <View style={styles.snippetRow}>
-                    <Text style={[styles.snippetText, msg.unread && styles.snippetTextUnread, msg.snippet.includes('📷') || msg.snippet.includes('📄') ? { color: "#2563EB", fontWeight: "600" } : {}]} numberOfLines={2}>{msg.snippet}</Text>
+                    <Text style={[styles.snippetText, msg.unread && styles.snippetTextUnread, msg.snippet?.includes('📷') || msg.snippet?.includes('📄') ? { color: "#2563EB", fontWeight: "600" } : {}]} numberOfLines={2}>{msg.snippet}</Text>
                     {msg.unread && <View style={styles.unreadDot} />}
                   </View>
                 </View>
@@ -590,7 +556,8 @@ export default function ParentMessagesScreen() {
                   <TouchableOpacity 
                     key={contact.id} 
                     style={styles.contactRow}
-                    onPress={() => handleOpenChat(contact.name, contact.role, contact.type)}
+                    // FIXED: Passing a safe, single object here!
+                    onPress={() => handleOpenChat({ name: contact.name, role: contact.role, type: contact.type, email: contact.email })}
                   >
                     <View style={[styles.avatarBg, { backgroundColor: '#DBEAFE' }]}>
                       <FontAwesome6 name="chalkboard-user" size={16} color="#2563EB" />

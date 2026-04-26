@@ -23,7 +23,7 @@ export default function TabsLayout() {
         }
       }}
     >
-      {/* 1. HOME TAB (Maps to your student-screen.tsx) */}
+      {/* 1. HOME TAB */}
       <Tabs.Screen
         name="student-screen"
         options={{
@@ -50,7 +50,16 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* 4. CALENDAR TAB */}
+      {/* 4. JOBS / INTERNSHIPS TAB (Using briefcase icon) */}
+      <Tabs.Screen
+        name="jobs"
+        options={{
+          title: "JOBS",
+          tabBarIcon: ({ color }) => <FontAwesome6 name="briefcase" size={20} color={color} />,
+        }}
+      />
+
+      {/* 5. CALENDAR TAB */}
       <Tabs.Screen
         name="calendar"
         options={{
@@ -59,7 +68,7 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* 5. PROFILE TAB */}
+      {/* 6. PROFILE TAB (Hidden from bottom bar) */}
       <Tabs.Screen
         name="student-profile"
         options={{

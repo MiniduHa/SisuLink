@@ -9,6 +9,7 @@ import {
   Modal,
   Platform,
   Image,
+  ImageBackground,
   ActivityIndicator
 } from "react-native";
 import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
@@ -39,8 +40,12 @@ export default function StudentScreen() {
     ongoingSubjects: [],
     gradesData: [],
     internshipsData: [],
-    attendanceStats: { percentage: "0%", status: "Loading...", message: "", present: 0, absent: 0 }
+    attendanceStats: { percentage: "0%", status: "Loading...", message: "", present: 0, absent: 0 },
+    specialEvents: [],
+    urgentNoticeData: [],
+    allNotices: []
   });
+  const [allMaterials, setAllMaterials] = useState<any[]>([]);
 
   const [messages, setMessages] = useState<any[]>([]);
 
@@ -56,17 +61,26 @@ export default function StudentScreen() {
           const timestamp = new Date().getTime();
           const profileRes = fetch(`http://172.20.10.7:5000/api/profile/${studentId}?t=${timestamp}`);
           const dashboardRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/dashboard?t=${timestamp}`);
-          const [profileResponse, dashboardResponse] = await Promise.all([profileRes, dashboardRes]);
+          const materialsRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/materials?t=${timestamp}`);
+          
+          const [profileResponse, dashboardResponse, materialsResponse] = await Promise.all([
+            profileRes, 
+            dashboardRes,
+            materialsRes
+          ]);
 
-          if (profileResponse.ok && dashboardResponse.ok && isActive) {
+          if (profileResponse.ok && dashboardResponse.ok && materialsResponse.ok && isActive) {
             const profileData = await profileResponse.json();
             const dashData = await dashboardResponse.json();
+            const materialsData = await materialsResponse.json();
+            
             setFirstName(profileData.first_name);
             setLastName(profileData.last_name);
             setEmail(profileData.email);
             setGradeLevel(profileData.grade_level);
             if (profileData.profile_photo_url) setProfilePhoto(profileData.profile_photo_url);
             setDashboardData(dashData);
+            setAllMaterials(materialsData);
           }
         } catch (error) {
           console.error("Failed to fetch dashboard data:", error);
@@ -101,6 +115,7 @@ export default function StudentScreen() {
   const [currentDate, setCurrentDate] = useState("");
   const [isAttendanceModalVisible, setAttendanceModalVisible] = useState(false);
   const [isSubjectModalVisible, setSubjectModalVisible] = useState(false);
+  const [isNoticesVisible, setIsNoticesVisible] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<any>(null);
 
   useEffect(() => {
@@ -115,11 +130,10 @@ export default function StudentScreen() {
     setCurrentDate(`${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`);
   }, []);
 
-  // Static Materials for now until DB tables exist
-  const subjectMaterials = {
-    videos: [ { id: "v1", title: "Chapter 1: Introduction", duration: "45 mins" }, { id: "v2", title: "Chapter 2: Advanced Theory", duration: "50 mins" } ],
-    notes: [ { id: "n1", title: "Full Lecture Notes - Unit 1", size: "2.4 MB" }, { id: "n2", title: "Quick Revision Summary", size: "1.1 MB" } ]
-  };
+  // Filter materials for the selected subject
+  const currentSubjectVideos = allMaterials.filter(m => m.subject === selectedSubject?.name && (m.material_type === 'Video' || m.material_type?.toLowerCase().includes('video')));
+  const currentSubjectNotes = allMaterials.filter(m => m.subject === selectedSubject?.name && (m.material_type === 'Note' || m.material_type === 'PDF' || m.material_type?.toLowerCase().includes('note') || m.material_type?.toLowerCase().includes('pdf')));
+  const currentSubjectGeneral = allMaterials.filter(m => m.subject === selectedSubject?.name && !currentSubjectVideos.includes(m) && !currentSubjectNotes.includes(m));
 
   const calendarDays = [
     { day: 28, type: 'prev', status: 'none' }, { day: 29, type: 'prev', status: 'none' }, { day: 30, type: 'prev', status: 'none' },
@@ -175,9 +189,17 @@ export default function StudentScreen() {
               <Text style={styles.dateText}>{currentDate} • {academicLevel}</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.notificationBtn} activeOpacity={0.8}>
+          <TouchableOpacity 
+            style={styles.notificationBtn} 
+            activeOpacity={0.8}
+            onPress={() => setIsNoticesVisible(true)}
+          >
             <Ionicons name="notifications" size={20} color="#2563EB" />
-            <View style={styles.notificationDot} />
+            {dashboardData.allNotices && dashboardData.allNotices.length > 0 && (
+              <View style={styles.notificationDot}>
+                 <Text style={styles.notificationDotText}>{dashboardData.allNotices.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -211,6 +233,23 @@ export default function StudentScreen() {
           ))}
         </ScrollView>
 
+        {/* URGENT NOTICE */}
+        {dashboardData.urgentNoticeData && dashboardData.urgentNoticeData.length > 0 && (
+          dashboardData.urgentNoticeData.map((notice: any) => (
+            <View key={notice.id} style={styles.urgentNoticeCard}>
+              <View style={styles.noticeHeader}>
+                <MaterialCommunityIcons name={notice.icon as any} size={28} color="#EF4444" />
+                <View style={styles.noticeTitleBlock}>
+                  <Text style={styles.noticeType}>URGENT NOTICE</Text>
+                  <Text style={styles.noticeTitle}>{notice.title}</Text>
+                </View>
+                <Text style={styles.noticeTime}>{notice.time}</Text>
+              </View>
+              <Text style={styles.noticeBody}>{notice.body}</Text>
+            </View>
+          ))
+        )}
+
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Messages</Text>
           <TouchableOpacity onPress={() => router.push({ pathname: "/(student-tabs)/student-messages", params: { email: email, first_name: firstName, last_name: lastName } as any })}><Text style={styles.linkText}>View All</Text></TouchableOpacity>
@@ -240,6 +279,33 @@ export default function StudentScreen() {
             <Text style={{ textAlign: 'center', color: '#94A3B8', fontStyle: 'italic', marginVertical: 10 }}>No recent messages</Text>
           )}
         </View>
+
+        {/* LATEST SCHOOL NEWS SECTION */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Latest School News</Text>
+          <TouchableOpacity onPress={() => router.push("/calendar")}>
+            <Text style={styles.linkText}>View All</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.newsCarouselScroll}>
+          {dashboardData.specialEvents && dashboardData.specialEvents.length > 0 ? (
+            dashboardData.specialEvents.map((news: any) => (
+              <TouchableOpacity key={news.id} style={styles.newsCard} activeOpacity={0.9}>
+                <ImageBackground source={{ uri: news.image }} style={styles.newsImage} imageStyle={{ borderRadius: 16 }}>
+                  <View style={styles.newsOverlay}>
+                    <Text style={styles.newsDate}>{news.date}</Text>
+                    <Text style={styles.newsTitle} numberOfLines={2}>{news.title}</Text>
+                  </View>
+                </ImageBackground>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={[styles.newsCard, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1F5F9' }]}>
+               <Text style={{ color: '#64748B', fontStyle: 'italic' }}>No special events to display.</Text>
+            </View>
+          )}
+        </ScrollView>
 
         <View style={[styles.sectionHeader, { marginTop: 24 }]}>
           <Text style={styles.sectionTitle}>Latest Grades</Text>
@@ -307,22 +373,70 @@ export default function StudentScreen() {
                </View>
             </View>
 
-            <View style={styles.materialSection}>
-              <View style={styles.materialSectionHeader}>
-                <Feather name="video" size={18} color="#1E293B" />
-                <Text style={styles.materialSectionTitle}>Video Lectures</Text>
-              </View>
-              {subjectMaterials.videos.map(video => (
-                <View key={video.id} style={styles.materialItem}>
-                  <View style={styles.materialItemIconBox}><FontAwesome6 name="play" size={14} color="#EF4444" /></View>
-                  <View style={styles.materialItemInfo}>
-                    <Text style={styles.materialItemTitle}>{video.title}</Text>
-                    <Text style={styles.materialItemSub}>{video.duration}</Text>
-                  </View>
-                  <TouchableOpacity style={styles.actionIconButton}><FontAwesome6 name="circle-play" size={22} color="#2563EB" /></TouchableOpacity>
+            {currentSubjectVideos.length > 0 && (
+              <View style={styles.materialSection}>
+                <View style={styles.materialSectionHeader}>
+                  <Feather name="video" size={18} color="#1E293B" />
+                  <Text style={styles.materialSectionTitle}>Video Lectures</Text>
                 </View>
-              ))}
-            </View>
+                {currentSubjectVideos.map(video => (
+                  <View key={video.id} style={styles.materialItem}>
+                    <View style={styles.materialItemIconBox}><FontAwesome6 name="play" size={14} color="#EF4444" /></View>
+                    <View style={styles.materialItemInfo}>
+                      <Text style={styles.materialItemTitle}>{video.title}</Text>
+                      <Text style={styles.materialItemSub}>{video.teacher_name || 'Teacher'}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.actionIconButton}><FontAwesome6 name="circle-play" size={22} color="#2563EB" /></TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {currentSubjectNotes.length > 0 && (
+              <View style={styles.materialSection}>
+                <View style={styles.materialSectionHeader}>
+                  <Feather name="file-text" size={18} color="#1E293B" />
+                  <Text style={styles.materialSectionTitle}>Study Notes & PDFs</Text>
+                </View>
+                {currentSubjectNotes.map(note => (
+                  <View key={note.id} style={styles.materialItem}>
+                    <View style={[styles.materialItemIconBox, { backgroundColor: '#EFF6FF' }]}><FontAwesome6 name="file-pdf" size={14} color="#2563EB" /></View>
+                    <View style={styles.materialItemInfo}>
+                      <Text style={styles.materialItemTitle}>{note.title}</Text>
+                      <Text style={styles.materialItemSub}>{note.teacher_name || 'Teacher'}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.actionIconButton}><FontAwesome6 name="download" size={20} color="#2563EB" /></TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {currentSubjectGeneral.length > 0 && (
+              <View style={styles.materialSection}>
+                <View style={styles.materialSectionHeader}>
+                  <Feather name="layers" size={18} color="#1E293B" />
+                  <Text style={styles.materialSectionTitle}>Other Resources</Text>
+                </View>
+                {currentSubjectGeneral.map(item => (
+                  <View key={item.id} style={styles.materialItem}>
+                    <View style={[styles.materialItemIconBox, { backgroundColor: '#F8FAFC' }]}><FontAwesome6 name="box-archive" size={14} color="#64748B" /></View>
+                    <View style={styles.materialItemInfo}>
+                      <Text style={styles.materialItemTitle}>{item.title}</Text>
+                      <Text style={styles.materialItemSub}>{item.material_type} • {item.teacher_name || 'Teacher'}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.actionIconButton}><FontAwesome6 name="link" size={20} color="#2563EB" /></TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {currentSubjectVideos.length === 0 && currentSubjectNotes.length === 0 && currentSubjectGeneral.length === 0 && (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <MaterialCommunityIcons name="folder-open-outline" size={64} color="#CBD5E1" />
+                <Text style={{ marginTop: 16, color: '#64748B', fontSize: 16, fontWeight: '600' }}>No materials shared yet</Text>
+                <Text style={{ marginTop: 4, color: '#94A3B8', fontSize: 14, textAlign: 'center' }}>Your teacher hasn't uploaded any resources for this subject yet.</Text>
+              </View>
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -370,6 +484,48 @@ export default function StudentScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* --- NOTIFICATIONS DROPDOWN MODAL --- */}
+      <Modal
+        visible={isNoticesVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsNoticesVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.noticesOverlay} 
+          activeOpacity={1} 
+          onPress={() => setIsNoticesVisible(false)}
+        >
+          <View style={styles.noticesPopup}>
+            <View style={styles.noticesPopupHeader}>
+              <Text style={styles.noticesPopupTitle}>Notifications</Text>
+              <TouchableOpacity onPress={() => setIsNoticesVisible(false)}>
+                <Feather name="x" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.noticesScroll} showsVerticalScrollIndicator={false}>
+              {dashboardData.allNotices && dashboardData.allNotices.length > 0 ? (
+                dashboardData.allNotices.map((notice: any) => (
+                  <View key={notice.id} style={styles.noticeListItem}>
+                    <View style={styles.noticeListIcon}>
+                      <FontAwesome6 name="bell" size={16} color={notice.priority === 'High' ? '#EF4444' : '#3B82F6'} />
+                    </View>
+                    <View style={styles.noticeListContent}>
+                      <Text style={styles.noticeListTitle}>{notice.title}</Text>
+                      <Text style={styles.noticeListBody} numberOfLines={2}>{notice.body}</Text>
+                      <Text style={styles.noticeListTime}>{notice.time}</Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noNoticesText}>No new notifications.</Text>
+              )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -385,7 +541,8 @@ const styles = StyleSheet.create({
   greeting: { fontSize: 20, fontWeight: "bold", color: "#1E293B", marginBottom: 2 },
   dateText: { fontSize: 10, fontWeight: "700", color: "#64748B", letterSpacing: 0.5 },
   notificationBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#FFFFFF", justifyContent: "center", alignItems: "center", elevation: 2 },
-  notificationDot: { position: "absolute", top: 10, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: "#EF4444", borderWidth: 1.5, borderColor: "#FFFFFF" },
+  notificationDot: { position: "absolute", top: 2, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: "#EF4444", borderWidth: 1.5, borderColor: "#FFFFFF", justifyContent: 'center', alignItems: 'center' },
+  notificationDotText: { color: '#FFFFFF', fontSize: 8, fontWeight: 'bold' },
   attendanceCard: { backgroundColor: "#FFFFFF", borderRadius: 20, padding: 20, marginBottom: 30, elevation: 3 },
   sectionSubtitle: { fontSize: 14, fontWeight: "600", color: "#475569", marginBottom: 8 },
   attendanceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
@@ -465,4 +622,35 @@ const styles = StyleSheet.create({
   dayNumberPrev: { color: "#CBD5E1" },
   dayNumberTextSelected: { color: "#2563EB" },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
+  
+  // Urgent Notice
+  urgentNoticeCard: { backgroundColor: "#FEF2F2", padding: 20, borderRadius: 20, marginBottom: 25, shadowColor: "#EF4444", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 4, marginTop: 10 },
+  noticeHeader: { flexDirection: "row", alignItems: "flex-start", marginBottom: 15 },
+  noticeTitleBlock: { flex: 1, paddingHorizontal: 12 },
+  noticeType: { fontSize: 12, fontWeight: "bold", color: "#EF4444", letterSpacing: 0.5 },
+  noticeTitle: { fontSize: 16, fontWeight: "800", color: "#1E293B", marginTop: 3 },
+  noticeTime: { fontSize: 11, color: "#9CA3AF" },
+  noticeBody: { fontSize: 13, color: "#475569", lineHeight: 20, fontWeight: "500" },
+
+  // News Carousel
+  newsCarouselScroll: { paddingBottom: 10, marginBottom: 20 },
+  newsCard: { width: width * 0.75, height: 160, marginRight: 15, borderRadius: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
+  newsImage: { width: "100%", height: "100%", justifyContent: "flex-end" },
+  newsOverlay: { backgroundColor: "rgba(0,0,0,0.5)", padding: 15, borderBottomLeftRadius: 16, borderBottomRightRadius: 16 },
+  newsDate: { color: "#E2E8F0", fontSize: 11, fontWeight: "600", marginBottom: 4 },
+  newsTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
+
+  // Notifications Popover
+  noticesOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
+  noticesPopup: { position: 'absolute', top: 110, right: 20, width: width * 0.75, maxHeight: 400, backgroundColor: '#FFFFFF', borderRadius: 16, shadowColor: '#000', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8, overflow: 'hidden' },
+  noticesPopupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#F8FAFC' },
+  noticesPopupTitle: { fontSize: 15, fontWeight: 'bold', color: '#1E293B' },
+  noticesScroll: { paddingHorizontal: 10, paddingVertical: 5 },
+  noticeListItem: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: '#F8FAFC', gap: 12 },
+  noticeListIcon: { marginTop: 2 },
+  noticeListContent: { flex: 1 },
+  noticeListTitle: { fontSize: 13, fontWeight: 'bold', color: '#1E293B', marginBottom: 3 },
+  noticeListBody: { fontSize: 12, color: '#64748B', marginBottom: 6 },
+  noticeListTime: { fontSize: 10, color: '#9CA3AF', fontWeight: '500' },
+  noNoticesText: { textAlign: 'center', padding: 30, color: '#64748B', fontStyle: 'italic', fontSize: 13 },
 });

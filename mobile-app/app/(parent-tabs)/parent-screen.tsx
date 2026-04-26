@@ -18,8 +18,6 @@ const { width } = Dimensions.get("window");
 
 let globalEmailCache = ""; 
 
-// Static constants moved to dashboard state
-
 export default function ParentDashboard() {
   const router = useRouter(); 
   const params = useLocalSearchParams();
@@ -42,7 +40,6 @@ export default function ParentDashboard() {
   const userName = dashboardData.parent.full_name;
 
   const [activeChildId, setActiveChildId] = useState<string | null>(null);
-
   const [messages, setMessages] = useState<any[]>([]);
 
   useFocusEffect(
@@ -50,7 +47,8 @@ export default function ParentDashboard() {
       let isActive = true;
       const fetchDashboardData = async () => {
         if (!userEmail) return;
-        setIsLoading(true);
+        // Notice: We DO NOT set isLoading(true) here anymore, 
+        // so it won't flash when changing tabs! It updates silently.
         try {
           const timestamp = new Date().getTime();
           const response = await fetch(`http://172.20.10.7:5000/api/parent/${userEmail}/dashboard?t=${timestamp}`);
@@ -74,7 +72,6 @@ export default function ParentDashboard() {
           const response = await fetch(`http://172.20.10.7:5000/api/messages/Parent/${userEmail}`);
           if (response.ok && isActive) {
             const data = await response.json();
-            // Show only received messages that are unread
             const receivedUnread = data.filter((m: any) => m.unread && m.sender !== 'Me');
             setMessages(receivedUnread.slice(0, 3)); 
           }
@@ -88,11 +85,6 @@ export default function ParentDashboard() {
       return () => { isActive = false; };
     }, [userEmail])
   );
-
-
-  const handleReadMessage = (id: number) => {
-    setMessages(messages.map(msg => msg.id === id ? { ...msg, unread: false } : msg));
-  };
 
   const currentAcademics = activeChildId ? (dashboardData.children || []).find((c: any) => c.studentId === activeChildId)?.academics : null;
 

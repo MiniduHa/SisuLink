@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
   View, 
   Text, 
@@ -10,12 +10,15 @@ import {
   Platform,
   Dimensions,
   Alert,
-  Image
+  Image,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as WebBrowser from 'expo-web-browser';
 
 const { width } = Dimensions.get("window"); 
 
@@ -38,15 +41,79 @@ export default function StudentProfileScreen() {
   const [activeTab, setActiveTab] = useState("About");
   const tabs = ["About", "Resume"];
   const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const [mobile, setMobile] = useState("+94 77 123 4567");
-  const [homePhone, setHomePhone] = useState("+94 11 234 5678");
-  const [address, setAddress] = useState("123, Flower Road, Colombo 07");
+  // --- PROFILE DATA STATES ---
+  const [mobile, setMobile] = useState("");
+  const [homePhone, setHomePhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [nic, setNic] = useState("");
+  const [dob, setDob] = useState("");
+  const [nationality, setNationality] = useState("");
+  const [religion, setReligion] = useState("");
+  const [district, setDistrict] = useState("");
+  const [province, setProvince] = useState("");
+  const [stream, setStream] = useState("");
 
-  const isOLCompleted = true;
-  const olResults = [
-    { subject: "Buddhism", grade: "A" }, { subject: "Sinhala Language & Lit.", grade: "A" }, { subject: "Mathematics", grade: "A" }, { subject: "Science", grade: "A" }, { subject: "English", grade: "B" }, { subject: "History", grade: "A" }, { subject: "Business & Acct.", grade: "A" }, { subject: "Geography", grade: "B" }, { subject: "ICT", grade: "A" },
-  ];
+  // Guardian States
+  const [guardianName, setGuardianName] = useState("");
+  const [guardianPhone, setGuardianPhone] = useState("");
+  const [guardianEmail, setGuardianEmail] = useState("");
+
+  // O/L Results States
+  const [isOLCompleted, setIsOLCompleted] = useState(false);
+  const [olSchool, setOlSchool] = useState("");
+  const [olYear, setOlYear] = useState("");
+  const [olStatus, setOlStatus] = useState("");
+  const [olScheme, setOlScheme] = useState("");
+  const [olResults, setOlResults] = useState<any[]>([]);
+
+  // Resume State
+  const [resumeUrl, setResumeUrl] = useState("");
+
+  // --- FETCH DATA ON MOUNT ---
+  const fetchProfile = useCallback(async () => {
+    if (!studentId) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch(`http://172.20.10.7:5000/api/profile/${studentId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setMobile(data.mobile_number || "");
+        setHomePhone(data.home_phone || "");
+        setAddress(data.address || "");
+        setNic(data.nic || "");
+        setDob(data.date_of_birth || "");
+        setNationality(data.nationality || "");
+        setReligion(data.religion || "");
+        setDistrict(data.district || "");
+        setProvince(data.province || "");
+        setStream(data.stream || "General");
+
+        if (data.guardian) {
+          setGuardianName(data.guardian.full_name || "");
+          setGuardianPhone(data.guardian.phone_number || "");
+          setGuardianEmail(data.guardian.email || "");
+        }
+
+        setOlSchool(data.ol_school || "");
+        setOlYear(data.ol_year || "");
+        setOlStatus(data.ol_status || "");
+        setOlScheme(data.ol_scheme || "");
+        setOlResults(data.ol_results || []);
+        setIsOLCompleted(!!data.ol_school);
+        setResumeUrl(data.resume_url || "");
+      }
+    } catch (error) {
+      console.error("Failed to fetch profile:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [studentId]);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
 
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
@@ -57,38 +124,135 @@ export default function StudentProfileScreen() {
 
   // --- SAVE & UPLOAD LOGIC ---
   const handleSave = async () => {
-    if (!profilePhoto || profilePhoto.startsWith('http')) {
+    setIsLoading(true);
+    try {
+      // 1. Update Text Data
+      const updateRes = await fetch(`http://172.20.10.7:5000/api/profile/${studentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mobile_number: mobile,
+          home_phone: homePhone,
+          address: address,
+          nic: nic,
+          date_of_birth: dob,
+          nationality: nationality,
+          religion: religion,
+          district: district,
+          province: province,
+          stream: stream,
+          guardian_name: guardianName,
+          guardian_phone: guardianPhone,
+          guardian_email: guardianEmail,
+          ol_school: olSchool,
+          ol_year: olYear,
+          ol_status: olStatus,
+          ol_scheme: olScheme,
+          ol_results: olResults
+        })
+      });
+
+      if (!updateRes.ok) throw new Error("Failed to update profile text data.");
+
+      // 2. Handle Photo Upload if changed
+      if (profilePhoto && !profilePhoto.startsWith('http')) {
+        const formData = new FormData();
+        formData.append('photo', {
+          uri: Platform.OS === 'android' ? profilePhoto : profilePhoto.replace('file://', ''),
+          name: `${studentId}_avatar.jpg`,
+          type: 'image/jpeg',
+        } as any);
+        formData.append('studentId', studentId);
+
+        const photoRes = await fetch("http://172.20.10.7:5000/api/profile/upload-avatar", {
+          method: "POST",
+          body: formData, 
+        });
+        const photoData = await photoRes.json();
+        if (photoRes.ok) setProfilePhoto(photoData.photoUrl);
+      }
+
       setIsEditing(false);
       Alert.alert("Success", "Profile updated successfully!");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('photo', {
-      uri: Platform.OS === 'android' ? profilePhoto : profilePhoto.replace('file://', ''),
-      name: `${studentId}_avatar.jpg`,
-      type: 'image/jpeg',
-    } as any);
-
-    formData.append('studentId', studentId);
-
-    try {
-      const response = await fetch("http://172.20.10.7:5000/api/profile/upload-avatar", {
-        method: "POST",
-        body: formData, 
-      });
-      const data = await response.json();
-
-      if (response.ok) {
-        setIsEditing(false);
-        Alert.alert("Success", "Profile photo updated permanently!");
-        setProfilePhoto(data.photoUrl); 
-      } else {
-        Alert.alert("Upload Failed", data.error || "Failed to upload image.");
-      }
+      fetchProfile(); // Refresh
     } catch (error) {
-      console.error("Upload error:", error);
-      Alert.alert("Network Error", "Could not connect to the server.");
+      console.error("Save error:", error);
+      Alert.alert("Update Failed", "Could not save your changes. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePickResume = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      });
+
+      if (!result.canceled) {
+        const file = result.assets[0];
+        setIsLoading(true);
+
+        const formData = new FormData();
+        formData.append('resume', {
+          uri: Platform.OS === 'android' ? file.uri : file.uri.replace('file://', ''),
+          name: file.name,
+          type: file.mimeType || 'application/pdf',
+        } as any);
+        formData.append('studentId', studentId);
+
+        const res = await fetch("http://172.20.10.7:5000/api/profile/upload-resume", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setResumeUrl(data.resumeUrl);
+          Alert.alert("Success", "Resume uploaded successfully!");
+        } else {
+          Alert.alert("Error", "Failed to upload resume.");
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Something went wrong.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRemoveResume = async () => {
+    Alert.alert("Remove Resume", "Are you sure you want to delete your resume?", [
+      { text: "Cancel", style: "cancel" },
+      { 
+        text: "Delete", 
+        style: "destructive",
+        onPress: async () => {
+          setIsLoading(true);
+          try {
+            const res = await fetch("http://172.20.10.7:5000/api/profile/remove-resume", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ studentId })
+            });
+            if (res.ok) {
+              setResumeUrl("");
+              Alert.alert("Success", "Resume removed.");
+            }
+          } catch (err) {
+            console.error(err);
+          } finally {
+            setIsLoading(false);
+          }
+        }
+      }
+    ]);
+  };
+
+  const handleViewResume = async () => {
+    if (resumeUrl) {
+      await WebBrowser.openBrowserAsync(resumeUrl);
     }
   };
 
@@ -137,6 +301,10 @@ export default function StudentProfileScreen() {
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          {isLoading && !isEditing && (
+            <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 20 }} />
+          )}
+          
           {/* MAIN PROFILE HEADER */}
           {activeTab === "About" && !isEditing && (
             <View style={styles.profileHeader}>
@@ -149,8 +317,9 @@ export default function StudentProfileScreen() {
               </View>
               <View style={styles.profileInfo}>
                 <Text style={styles.name}>{firstName} {lastName}</Text>
-                <View style={[styles.statsRow, { marginTop: 12 }]}>
-                  <View style={styles.statBox}><Text style={styles.statValue}>{attendance}</Text><Text style={styles.statLabel}>Attendance</Text></View>
+                <View style={styles.badgeRow}>
+                  <View style={styles.idBadge}><Text style={styles.idBadgeText}>{studentId}</Text></View>
+                  <View style={styles.gradeBadge}><Text style={styles.gradeBadgeText}>Grade {gradeLevel}</Text></View>
                 </View>
               </View>
             </View>
@@ -174,49 +343,47 @@ export default function StudentProfileScreen() {
                 <InfoRow label="Last Name" value={lastName} />
                 <InfoRow label="Email Address" value={email} />
                 <InfoRow label="Grade" value={gradeLevel} />
-                {(gradeLevel === "12" || gradeLevel === "13") && ( <InfoRow label="Stream/Section" value="Physical Science" /> )}
+                {(gradeLevel === "12" || gradeLevel === "13") && ( <InfoRow label="Stream/Section" value={stream || "Not Assigned"} /> )}
               </View>
 
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Personal Information</Text>
-                <InfoRow label="NIC" value="200512345678" />
-                <InfoRow label="Mobile Number" value={mobile} />
-                <InfoRow label="Home Phone" value={homePhone} />
-                <InfoRow label="Date of Birth" value="15 May 2005" />
-                <InfoRow label="Nationality" value="Sri Lankan" />
-                <InfoRow label="Religion" value="Buddhism" />
-                <View style={styles.infoRowColumn}><Text style={styles.infoLabel}>Address</Text><Text style={styles.infoValueMultline}>{address}</Text></View>
-                <InfoRow label="District" value="Colombo" />
-                <InfoRow label="Province" value="Western Province" />
+                <InfoRow label="NIC" value={nic || "Not Provided"} />
+                <InfoRow label="Mobile Number" value={mobile || "Not Provided"} />
+                <InfoRow label="Home Phone" value={homePhone || "Not Provided"} />
+                <InfoRow label="Date of Birth" value={dob || "Not Provided"} />
+                <InfoRow label="Nationality" value={nationality || "Not Provided"} />
+                <InfoRow label="Religion" value={religion || "Not Provided"} />
+                <View style={styles.infoRowColumn}><Text style={styles.infoLabel}>Address</Text><Text style={styles.infoValueMultline}>{address || "Not Provided"}</Text></View>
+                <InfoRow label="District" value={district || "Not Provided"} />
+                <InfoRow label="Province" value={province || "Not Provided"} />
               </View>
 
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Guardian Information</Text>
-                <View style={styles.guardianRow}><Text style={styles.guardianLabel}>Father</Text><Text style={styles.guardianValue}>Mr. Nimal Wickramasinghe</Text></View>
-                <View style={styles.guardianRow}><Text style={styles.guardianLabel}>Phone</Text><Text style={styles.guardianValue}>+94 71 987 6543</Text></View>
-                <View style={styles.guardianRow}><Text style={styles.guardianLabel}>Email</Text><Text style={styles.guardianValue}>nimal.w@email.com</Text></View>
-                <View style={styles.cardDivider} />
-                <View style={styles.guardianRow}><Text style={styles.guardianLabel}>Mother</Text><Text style={styles.guardianValue}>Mrs. Shirani Wickramasinghe</Text></View>
-                <View style={styles.guardianRow}><Text style={styles.guardianLabel}>Phone</Text><Text style={styles.guardianValue}>+94 77 234 5678</Text></View>
-                <View style={styles.guardianRow}><Text style={styles.guardianLabel}>Email</Text><Text style={styles.guardianValue}>shirani.w@email.com</Text></View>
+                <View style={styles.guardianRow}><Text style={styles.guardianLabel}>Name</Text><Text style={styles.guardianValue}>{guardianName || "Not Provided"}</Text></View>
+                <View style={styles.guardianRow}><Text style={styles.guardianLabel}>Phone</Text><Text style={styles.guardianValue}>{guardianPhone || "Not Provided"}</Text></View>
+                <View style={styles.guardianRow}><Text style={styles.guardianLabel}>Email</Text><Text style={styles.guardianValue}>{guardianEmail || "Not Provided"}</Text></View>
               </View>
 
               {isOLCompleted && (
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>G.C.E O/L Examination</Text>
-                  <InfoRow label="School" value="Royal College, Colombo" />
-                  <InfoRow label="Year" value="2021" />
-                  <InfoRow label="Status" value="Passed" />
-                  <InfoRow label="Scheme" value="Local Syllabus" />
+                  <InfoRow label="School" value={olSchool || "Not Provided"} />
+                  <InfoRow label="Year" value={olYear || "Not Provided"} />
+                  <InfoRow label="Status" value={olStatus || "Not Provided"} />
+                  <InfoRow label="Scheme" value={olScheme || "Not Provided"} />
                   <View style={styles.cardDivider} />
                   <Text style={[styles.infoLabel, { marginBottom: 12 }]}>Subjects & Results</Text>
                   <View style={styles.resultsGrid}>
-                    {olResults.map((item, index) => (
+                    {olResults && olResults.length > 0 ? olResults.map((item, index) => (
                       <View key={index} style={styles.resultItem}>
                         <Text style={styles.resultSubject} numberOfLines={1}>{item.subject}</Text>
                         <Text style={[styles.resultGrade, { color: item.grade === "A" ? "#16A34A" : item.grade === "B" ? "#2563EB" : "#D97706" }]}>{item.grade}</Text>
                       </View>
-                    ))}
+                    )) : (
+                      <Text style={{ fontSize: 12, color: "#94A3B8" }}>No results added.</Text>
+                    )}
                   </View>
                 </View>
               )}
@@ -241,27 +408,140 @@ export default function StudentProfileScreen() {
                 <Text style={styles.changePhotoText} onPress={handlePickImage}>Change Profile Photo</Text>
               </View>
 
+              <Text style={styles.sectionDividerTitle}>Contact Details</Text>
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Mobile Number</Text>
-                <TextInput style={styles.input} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholderTextColor="#9CA3AF" />
+                <TextInput style={styles.input} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="e.g. +94 77 123 4567" placeholderTextColor="#9CA3AF" />
               </View>
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Home Phone</Text>
-                <TextInput style={styles.input} value={homePhone} onChangeText={setHomePhone} keyboardType="phone-pad" placeholderTextColor="#9CA3AF" />
+                <TextInput style={styles.input} value={homePhone} onChangeText={setHomePhone} keyboardType="phone-pad" placeholder="e.g. +94 11 234 5678" placeholderTextColor="#9CA3AF" />
               </View>
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Home Address</Text>
-                <TextInput style={styles.textArea} multiline numberOfLines={3} value={address} onChangeText={setAddress} placeholderTextColor="#9CA3AF" textAlignVertical="top" />
+                <TextInput style={styles.textArea} multiline numberOfLines={3} value={address} onChangeText={setAddress} placeholder="Enter your full address" placeholderTextColor="#9CA3AF" textAlignVertical="top" />
+              </View>
+
+              <Text style={styles.sectionDividerTitle}>Personal Details</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>NIC Number</Text>
+                <TextInput style={styles.input} value={nic} onChangeText={setNic} placeholder="e.g. 200512345678" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Date of Birth</Text>
+                <TextInput style={styles.input} value={dob} onChangeText={setDob} placeholder="e.g. 15 May 2005" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Nationality</Text>
+                <TextInput style={styles.input} value={nationality} onChangeText={setNationality} placeholder="e.g. Sri Lankan" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Religion</Text>
+                <TextInput style={styles.input} value={religion} onChangeText={setReligion} placeholder="e.g. Buddhism" placeholderTextColor="#9CA3AF" />
+              </View>
+              {(gradeLevel === "12" || gradeLevel === "13") && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Stream/Section</Text>
+                  <TextInput style={styles.input} value={stream} onChangeText={setStream} placeholder="e.g. Physical Science" placeholderTextColor="#9CA3AF" />
+                </View>
+              )}
+
+              <Text style={styles.sectionDividerTitle}>Guardian Details</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Guardian's Name</Text>
+                <TextInput style={styles.input} value={guardianName} onChangeText={setGuardianName} placeholder="Full Name" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Guardian's Phone</Text>
+                <TextInput style={styles.input} value={guardianPhone} onChangeText={setGuardianPhone} keyboardType="phone-pad" placeholder="Phone Number" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Guardian's Email</Text>
+                <TextInput style={styles.input} value={guardianEmail} onChangeText={setGuardianEmail} keyboardType="email-address" placeholder="Email Address" placeholderTextColor="#9CA3AF" autoCapitalize="none" />
+              </View>
+
+              <Text style={styles.sectionDividerTitle}>G.C.E O/L Results</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>School</Text>
+                <TextInput style={styles.input} value={olSchool} onChangeText={setOlSchool} placeholder="School Name" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Year</Text>
+                <TextInput style={styles.input} value={olYear} onChangeText={setOlYear} placeholder="e.g. 2021" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Status</Text>
+                <TextInput style={styles.input} value={olStatus} onChangeText={setOlStatus} placeholder="e.g. Passed" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Scheme</Text>
+                <TextInput style={styles.input} value={olScheme} onChangeText={setOlScheme} placeholder="e.g. Local Syllabus" placeholderTextColor="#9CA3AF" />
               </View>
 
               <View style={styles.infoBox}>
                 <Feather name="info" size={16} color="#3B82F6" style={{ marginRight: 8 }} />
-                <Text style={styles.infoBoxText}>To change your locked personal, academic, or guardian information, please contact the school administration directly.</Text>
+                <Text style={styles.infoBoxText}>Basic academic info like Student ID and Email are managed by the school office.</Text>
               </View>
             </View>
           )}
 
-          {/* TAB CONTENT: RESUME VIEW & EDIT TRUNCATED FOR LENGTH */}
+          {/* TAB CONTENT: RESUME VIEW & EDIT */}
+          {activeTab === "Resume" && (
+            <View style={styles.tabContent}>
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Professional Resume</Text>
+                <Text style={styles.cardSubtitle}>Upload your resume to showcase your skills and achievements to the school and potential future opportunities.</Text>
+                
+                {resumeUrl ? (
+                  <View style={styles.resumeContainer}>
+                    <View style={styles.resumeFileIcon}>
+                      <MaterialCommunityIcons name="file-pdf-box" size={40} color="#EF4444" />
+                    </View>
+                    <View style={styles.resumeFileInfo}>
+                      <Text style={styles.resumeFileName} numberOfLines={1}>Student_Resume.pdf</Text>
+                      <Text style={styles.resumeFileStatus}>Uploaded and active</Text>
+                    </View>
+                    <TouchableOpacity style={styles.viewResumeBtn} onPress={handleViewResume}>
+                      <Feather name="eye" size={20} color="#2563EB" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.emptyResumeContainer}>
+                    <MaterialCommunityIcons name="file-upload-outline" size={48} color="#94A3B8" />
+                    <Text style={styles.emptyResumeText}>No resume uploaded yet</Text>
+                  </View>
+                )}
+
+                {!isEditing && !resumeUrl && (
+                  <View style={styles.resumeInfoBox}>
+                    <Feather name="info" size={14} color="#64748B" style={{ marginRight: 6 }} />
+                    <Text style={styles.resumeInfoText}>Switch to edit mode to upload your resume.</Text>
+                  </View>
+                )}
+
+                {isEditing && (
+                  <View style={styles.resumeActionContainer}>
+                    {resumeUrl ? (
+                      <TouchableOpacity style={styles.deleteResumeBtn} onPress={handleRemoveResume}>
+                        <Feather name="trash-2" size={16} color="#EF4444" style={{ marginRight: 8 }} />
+                        <Text style={styles.deleteResumeBtnText}>Delete and Re-upload</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity style={styles.uploadResumeBtn} onPress={handlePickResume}>
+                        <Feather name="upload" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.uploadResumeBtnText}>Upload Resume (PDF/DOC)</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.infoBox}>
+                <Feather name="shield" size={16} color="#3B82F6" style={{ marginRight: 8 }} />
+                <Text style={styles.infoBoxText}>Your resume is only visible to school administrators and relevant faculty members.</Text>
+              </View>
+            </View>
+          )}
           
         </ScrollView>
       </KeyboardAvoidingView>
@@ -282,8 +562,12 @@ const styles = StyleSheet.create({
   avatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
   avatarText: { fontSize: 28, fontWeight: "bold", color: "#FFFFFF" },
   profileInfo: { flex: 1 },
-  name: { fontSize: 20, fontWeight: "bold", color: "#1E293B", marginBottom: 4 },
-  statsRow: { flexDirection: "row", alignItems: "center" },
+  name: { fontSize: 20, fontWeight: "bold", color: "#1E293B", marginBottom: 8 },
+  badgeRow: { flexDirection: "row", gap: 8 },
+  idBadge: { backgroundColor: "#DBEAFE", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  idBadgeText: { fontSize: 12, fontWeight: "bold", color: "#2563EB" },
+  gradeBadge: { backgroundColor: "#F1F5F9", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  gradeBadgeText: { fontSize: 12, fontWeight: "bold", color: "#64748B" },
   statBox: { alignItems: "flex-start" },
   statValue: { fontSize: 16, fontWeight: "bold", color: "#1E293B" },
   statLabel: { fontSize: 11, color: "#64748B", marginTop: 2 },
@@ -322,5 +606,24 @@ const styles = StyleSheet.create({
   infoBox: { flexDirection: "row", backgroundColor: "#EFF6FF", padding: 16, borderRadius: 12, marginTop: 10 },
   infoBoxText: { flex: 1, fontSize: 13, color: "#1E40AF", lineHeight: 20 },
   logoutButton: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 10, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2" },
-  logoutButtonText: { color: "#EF4444", fontSize: 15, fontWeight: "bold" }
+  logoutButtonText: { color: "#EF4444", fontSize: 15, fontWeight: "bold" },
+  sectionDividerTitle: { fontSize: 12, fontWeight: "bold", color: "#64748B", marginTop: 24, marginBottom: 16, textTransform: "uppercase", letterSpacing: 1 },
+  
+  // Resume Styles
+  cardSubtitle: { fontSize: 13, color: "#64748B", lineHeight: 20, marginBottom: 20 },
+  resumeContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#F8FAFC", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#E2E8F0" },
+  resumeFileIcon: { width: 48, height: 48, borderRadius: 10, backgroundColor: "#FEE2E2", justifyContent: "center", alignItems: "center", marginRight: 12 },
+  resumeFileInfo: { flex: 1 },
+  resumeFileName: { fontSize: 14, fontWeight: "600", color: "#1E293B" },
+  resumeFileStatus: { fontSize: 12, color: "#16A34A", marginTop: 2 },
+  viewResumeBtn: { padding: 8, borderRadius: 8, backgroundColor: "#EFF6FF" },
+  emptyResumeContainer: { alignItems: "center", paddingVertical: 40, backgroundColor: "#F8FAFC", borderRadius: 12, borderStyle: "dashed", borderWidth: 1, borderColor: "#CBD5E1" },
+  emptyResumeText: { marginTop: 12, fontSize: 14, color: "#64748B" },
+  resumeInfoBox: { flexDirection: "row", alignItems: "center", marginTop: 16, justifyContent: "center" },
+  resumeInfoText: { fontSize: 12, color: "#64748B" },
+  resumeActionContainer: { marginTop: 20 },
+  uploadResumeBtn: { backgroundColor: "#2563EB", flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12 },
+  uploadResumeBtnText: { color: "#FFFFFF", fontSize: 15, fontWeight: "bold" },
+  deleteResumeBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2" },
+  deleteResumeBtnText: { color: "#EF4444", fontSize: 14, fontWeight: "600" }
 });

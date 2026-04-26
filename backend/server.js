@@ -383,21 +383,41 @@ app.post('/api/auth/reset-password', async (req, res) => {
 app.get('/api/student/:studentId/dashboard', async (req, res) => {
   try {
     const { studentId } = req.params;
-    
-    const studentRes = await db.query('SELECT grade_level FROM students WHERE index_number = $1', [studentId]);
+    const studentRes = await db.query('SELECT school_id, grade_level, subjects FROM students WHERE index_number = $1', [studentId]);
     if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
     
-    const gradeLevel = studentRes.rows[0].grade_level;
+    const { school_id: schoolId, grade_level: gradeLevel, subjects: enrolledSubjectsData } = studentRes.rows[0];
+    
+    // Parse subjects from student record (stored as JSON array)
+    let enrolledSubjects = [];
+    try {
+      if (enrolledSubjectsData) {
+        enrolledSubjects = typeof enrolledSubjectsData === 'string' ? JSON.parse(enrolledSubjectsData) : enrolledSubjectsData;
+      }
+    } catch (e) {
+      console.error("Error parsing student subjects:", e);
+    }
 
+    // Fetch all subject details for the student's grade
     const subjectsRes = await db.query('SELECT * FROM subjects WHERE grade_level = $1', [gradeLevel]);
-    const ongoingSubjects = subjectsRes.rows.map(sub => ({
-      id: sub.id.toString(),
-      name: sub.name,
-      teacher: sub.teacher_name,
-      icon: sub.icon_name,
-      color: sub.theme_color,
-      bg: sub.bg_color
-    }));
+    const subjectDetailsMap = {};
+    subjectsRes.rows.forEach(sub => {
+      subjectDetailsMap[sub.name] = sub;
+    });
+
+    // Create ongoing subjects list based on student's enrollment
+    const ongoingSubjects = enrolledSubjects.map((subjectName, index) => {
+      const detail = subjectDetailsMap[subjectName];
+      
+      return {
+        id: detail ? detail.id.toString() : `enrolled-${index}`,
+        name: subjectName,
+        teacher: detail ? detail.teacher_name : "Subject Teacher",
+        icon: detail ? detail.icon_name : "book",
+        color: detail ? detail.theme_color : "#4F46E5",
+        bg: detail ? detail.bg_color : "#F5F3FF"
+      };
+    });
 
     const gradesRes = await db.query('SELECT * FROM student_grades WHERE student_id = $1 ORDER BY created_at DESC LIMIT 3', [studentId]);
     const gradesData = gradesRes.rows.map(g => ({
@@ -431,10 +451,124 @@ app.get('/api/student/:studentId/dashboard', async (req, res) => {
       absent: 30
     };
 
-    res.json({ ongoingSubjects, gradesData, internshipsData, attendanceStats });
+    // Fetch Special Events (Latest School News)
+    let specialEvents = [];
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    try {
+      const specialRes = await db.query(
+        `SELECT id, title, type, event_date, location, image_url 
+         FROM events 
+         WHERE school_id = $1 
+         AND is_special = true 
+         AND event_date < $2 
+         AND event_date >= $2 - INTERVAL '14 days' 
+         ORDER BY event_date DESC`,
+        [schoolId, todayStart]
+      );
+      specialEvents = specialRes.rows.map(evt => ({
+        id: evt.id,
+        title: evt.title,
+        type: evt.type,
+        date: new Date(evt.event_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        location: evt.location,
+        image: evt.image_url || "https://images.unsplash.com/photo-1523580494863-6f3031224c94?w=500&q=80"
+      }));
+    } catch (err) {
+      console.error("Failed to fetch special events for student:", err);
+    }
+
+    // Fetch Urgent Notices
+    let urgentNoticeData = [];
+    try {
+      const noticeRes = await db.query(
+        `SELECT id, title, content, created_at 
+         FROM notices 
+         WHERE school_id = $1 
+         AND priority = 'High' 
+         AND (audience = 'Student' OR audience = 'All students, parents and teachers' OR audience = 'All') 
+         AND status = 'Published' 
+         ORDER BY created_at DESC`,
+        [schoolId]
+      );
+
+      urgentNoticeData = noticeRes.rows.map(notice => {
+        const createdDate = new Date(notice.created_at);
+        return {
+          id: notice.id,
+          icon: "alert-circle",
+          title: notice.title,
+          time: createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          body: notice.content
+        };
+      });
+    } catch (err) {
+      console.error("Failed to fetch urgent notices for student:", err);
+    }
+
+    // Fetch All Notices (for dropdown)
+    let allNotices = [];
+    try {
+      const allNoticesRes = await db.query(
+        `SELECT id, title, content, priority, created_at 
+         FROM notices 
+         WHERE school_id = $1 
+         AND (audience = 'Student' OR audience = 'All students, parents and teachers' OR audience = 'All') 
+         AND status = 'Published' 
+         ORDER BY created_at DESC 
+         LIMIT 15`,
+        [schoolId]
+      );
+      
+      allNotices = allNoticesRes.rows.map(n => {
+        const dateObj = new Date(n.created_at);
+        return {
+          id: n.id,
+          title: n.title,
+          body: n.content,
+          priority: n.priority,
+          time: dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + " at " + dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+      });
+    } catch (err) {
+      console.error("Failed to fetch all notices for student:", err);
+    }
+
+    res.json({ 
+      ongoingSubjects, 
+      gradesData, 
+      internshipsData, 
+      attendanceStats,
+      specialEvents,
+      urgentNoticeData,
+      allNotices
+    });
   } catch (error) {
     console.error("Dashboard Fetch Error:", error.message);
     res.status(500).json({ error: "Server error fetching dashboard data." });
+  }
+});
+
+
+// ---> FETCH STUDENT GRADES ROUTE <---
+app.get('/api/student/:studentId/grades', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    
+    // Fetch all grades for this specific student
+    const result = await db.query(
+      `SELECT subject_name as subject, marks, grade, assessment_type as term, level, remarks 
+       FROM student_grades 
+       WHERE student_id = $1 
+       ORDER BY created_at DESC`,
+      [studentId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Grades Fetch Error:", error.message);
+    res.status(500).json({ error: "Server error fetching student grades." });
   }
 });
 
@@ -620,15 +754,25 @@ app.get('/api/teacher/:email/events', async (req, res) => {
     const { email } = req.params;
     const cleanEmail = email.toLowerCase().trim();
 
-    const teacherRes = await db.query('SELECT school_id FROM teachers WHERE email = $1', [cleanEmail]);
-    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    // Smart lookup: check teachers, then students, then parents to find the school_id
+    let userRes = await db.query('SELECT school_id FROM teachers WHERE email = $1', [cleanEmail]);
+    
+    if (userRes.rows.length === 0) {
+      userRes = await db.query('SELECT school_id FROM students WHERE email = $1', [cleanEmail]);
+    }
+    
+    if (userRes.rows.length === 0) {
+      userRes = await db.query('SELECT school_id FROM parents WHERE email = $1', [cleanEmail]);
+    }
+
+    if (userRes.rows.length === 0) return res.status(404).json({ error: "User not found" });
 
     const result = await db.query(
       `SELECT id, title, description, event_date, time_from, time_to, location, type, is_special 
        FROM events 
        WHERE school_id = $1 
        ORDER BY event_date ASC, time_from ASC`,
-      [teacherRes.rows[0].school_id]
+      [userRes.rows[0].school_id]
     );
 
     res.json(result.rows);
@@ -968,13 +1112,103 @@ app.post('/api/profile/upload-avatar', upload.single('photo'), async (req, res) 
   } catch (error) { res.status(500).json({ error: "Server error during photo upload." }); }
 });
 
+app.post('/api/profile/upload-resume', upload.single('resume'), async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No file uploaded." });
+
+    const fileExt = file.originalname ? file.originalname.split('.').pop() : 'pdf';
+    const fileName = `resume_${studentId}_${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file.buffer, { 
+      contentType: file.mimetype, 
+      upsert: true 
+    });
+    
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+    await db.query('UPDATE students SET resume_url = $1 WHERE index_number = $2', [publicUrl, studentId]);
+
+    res.json({ message: "Resume uploaded successfully", resumeUrl: publicUrl });
+  } catch (error) { 
+    console.error("Resume Upload Error:", error);
+    res.status(500).json({ error: "Server error during resume upload." }); 
+  }
+});
+
+app.post('/api/profile/remove-resume', async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    await db.query('UPDATE students SET resume_url = NULL WHERE index_number = $1', [studentId]);
+    res.json({ message: "Resume removed successfully" });
+  } catch (error) { 
+    console.error("Resume Remove Error:", error);
+    res.status(500).json({ error: "Server error removing resume." }); 
+  }
+});
+
 app.get('/api/profile/:studentId', async (req, res) => {
   try {
     const { studentId } = req.params;
-    const result = await db.query('SELECT first_name, last_name, email, grade_level, profile_photo_url FROM students WHERE index_number = $1', [studentId]);
+    
+    // 1. Fetch Student
+    const studentRes = await db.query('SELECT * FROM students WHERE index_number = $1', [studentId]);
+    if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
+    const student = studentRes.rows[0];
+
+    // 2. Fetch Parent/Guardian info from parents table
+    const parentRes = await db.query(
+      'SELECT full_name, email, phone_number FROM parents WHERE $1 = ANY(child_student_ids) LIMIT 1',
+      [studentId]
+    );
+
+    const guardian = parentRes.rows.length > 0 ? parentRes.rows[0] : {
+      full_name: student.father_name || student.mother_name || "",
+      email: student.father_email || student.mother_email || student.parent_email || "",
+      phone_number: student.father_phone || student.mother_phone || student.parent_phone || ""
+    };
+
+    res.json({ ...student, guardian });
+  } catch (error) { 
+    console.error("Fetch Student Profile Error:", error);
+    res.status(500).json({ error: "Server error fetching profile." }); 
+  }
+});
+
+app.put('/api/profile/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { 
+      mobile_number, home_phone, address, nic, date_of_birth, 
+      nationality, religion, district, province, stream,
+      guardian_name, guardian_phone, guardian_email,
+      ol_school, ol_year, ol_status, ol_scheme, ol_results
+    } = req.body;
+
+    const result = await db.query(
+      `UPDATE students SET 
+        mobile_number = $1, home_phone = $2, address = $3, nic = $4, date_of_birth = $5,
+        nationality = $6, religion = $7, district = $8, province = $9, stream = $10,
+        father_name = $11, parent_phone = $12, parent_email = $13,
+        ol_school = $14, ol_year = $15, ol_status = $16, ol_scheme = $17, ol_results = $18
+      WHERE index_number = $19 RETURNING *`,
+      [
+        mobile_number, home_phone, address, nic, date_of_birth,
+        nationality, religion, district, province, stream,
+        guardian_name, guardian_phone, guardian_email,
+        ol_school, ol_year, ol_status, ol_scheme, ol_results,
+        studentId
+      ]
+    );
+
     if (result.rows.length === 0) return res.status(404).json({ error: "Student not found" });
-    res.json(result.rows[0]);
-  } catch (error) { res.status(500).json({ error: "Server error fetching profile." }); }
+    res.json({ message: "Profile updated successfully", user: result.rows[0] });
+  } catch (error) {
+    console.error("Update Student Profile Error:", error);
+    res.status(500).json({ error: "Server error updating student profile." });
+  }
 });
 
 app.get('/api/parents/:email', async (req, res) => {
