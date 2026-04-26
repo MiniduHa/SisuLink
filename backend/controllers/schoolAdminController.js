@@ -37,9 +37,9 @@ exports.getTeachers = async (req, res) => {
     const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     
-    // Safety Net: Added school_id and profile_photo_url to the fetch so the web dashboard can see everything!
+    // FIXED: Added is_class_teacher to the query
     const teachersResult = await db.query(
-      'SELECT id, full_name, email, phone_number, staff_id, department, subject, medium, status, school_id, profile_photo_url, created_at FROM teachers WHERE school_id = $1 ORDER BY created_at DESC', 
+      'SELECT id, full_name, email, phone_number, staff_id, department, subject, medium, status, school_id, profile_photo_url, is_class_teacher, created_at FROM teachers WHERE school_id = $1 ORDER BY created_at DESC', 
       [schoolResult.rows[0].id]
     );
     res.json(teachersResult.rows);
@@ -50,16 +50,18 @@ exports.getTeachers = async (req, res) => {
 exports.addTeacher = async (req, res) => {
   try {
     const { email } = req.params; 
-    const { fullName, teacherEmail, phone, staffId, department, subject, medium, password } = req.body;
+    // FIXED: Added isClassTeacher to the destructured body
+    const { fullName, teacherEmail, phone, staffId, department, subject, medium, password, isClassTeacher } = req.body;
     const schoolResult = await db.query('SELECT id, name FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    // FIXED: Added is_class_teacher into the insert statement
     const result = await db.query(
-      `INSERT INTO teachers (full_name, email, phone_number, password, staff_id, department, subject, medium, school_name, school_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, full_name, email`,
-      [fullName, teacherEmail.toLowerCase().trim(), phone, hashedPassword, staffId, department, subject, medium, schoolResult.rows[0].name, schoolResult.rows[0].id]
+      `INSERT INTO teachers (full_name, email, phone_number, password, staff_id, department, subject, medium, school_name, school_id, is_class_teacher) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, full_name, email`,
+      [fullName, teacherEmail.toLowerCase().trim(), phone, hashedPassword, staffId, department, subject, medium, schoolResult.rows[0].name, schoolResult.rows[0].id, isClassTeacher || false]
     );
     res.status(201).json({ message: "Teacher added successfully!", teacher: result.rows[0] });
   } catch (error) {
@@ -72,13 +74,15 @@ exports.addTeacher = async (req, res) => {
 exports.updateTeacher = async (req, res) => {
   try {
     const { email, teacherId } = req.params; 
-    const { fullName, teacherEmail, phone, staffId, department, subject, medium, status } = req.body;
+    // FIXED: Added isClassTeacher to the destructured body
+    const { fullName, teacherEmail, phone, staffId, department, subject, medium, status, isClassTeacher } = req.body;
     const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
 
+    // FIXED: Added is_class_teacher into the update statement
     const result = await db.query(
-      `UPDATE teachers SET full_name = $1, email = $2, phone_number = $3, staff_id = $4, department = $5, subject = $6, medium = $7, status = $8 WHERE id = $9 AND school_id = $10 RETURNING *`,
-      [fullName, teacherEmail.toLowerCase().trim(), phone, staffId, department, subject, medium, status, teacherId, schoolResult.rows[0].id]
+      `UPDATE teachers SET full_name = $1, email = $2, phone_number = $3, staff_id = $4, department = $5, subject = $6, medium = $7, status = $8, is_class_teacher = $9 WHERE id = $10 AND school_id = $11 RETURNING *`,
+      [fullName, teacherEmail.toLowerCase().trim(), phone, staffId, department, subject, medium, status, isClassTeacher || false, teacherId, schoolResult.rows[0].id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: "Teacher not found or unauthorized." });
     res.json({ message: "Teacher updated successfully!", teacher: result.rows[0] });

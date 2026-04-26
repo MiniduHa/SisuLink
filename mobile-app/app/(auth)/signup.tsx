@@ -115,8 +115,9 @@ export default function SignupScreen() {
   // Teacher Specific States
   const [staffId, setStaffId] = useState("");
   const [department, setDepartment] = useState("");
-  const [subject, setSubject] = useState(""); // NEW: Added subject state
+  const [subject, setSubject] = useState(""); 
   const [medium, setMedium] = useState("");
+  const [isClassTeacher, setIsClassTeacher] = useState(false); // NEW: Class Teacher State
   
   const [companyName, setCompanyName] = useState("");
   const [brn, setBrn] = useState("");
@@ -210,8 +211,9 @@ export default function SignupScreen() {
         payload.phone_number = phone;
         payload.staff_id = staffId;
         payload.department = department;
-        payload.subject = subject; // NEW: Added subject to payload
+        payload.subject = subject; 
         payload.medium = medium;
+        payload.is_class_teacher = isClassTeacher; // NEW: Sent to backend
         payload.school_name = school; 
       }
       
@@ -328,14 +330,13 @@ export default function SignupScreen() {
             <CustomInput label="Phone Number" placeholder="e.g. +94 77 123 4567" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
             <CustomInput label="Staff ID" placeholder="Enter your Staff ID" value={staffId} onChangeText={setStaffId} />
             
-            {/* NEW: Dynamic Department and Subject Dropdowns */}
             <CustomDropdown 
               label="Department / Section" 
               value={department} 
               options={Object.keys(subjectOptions)} 
               onSelect={(selectedDept: string) => {
                 setDepartment(selectedDept);
-                setSubject(""); // Reset subject if they pick a new department!
+                setSubject(""); 
               }} 
             />
             
@@ -350,6 +351,13 @@ export default function SignupScreen() {
 
             <CustomDropdown label="Medium" value={medium} options={["English", "Sinhala", "Tamil"]} onSelect={setMedium} />
             
+            {/* NEW: Class Teacher Checkbox */}
+            <CustomCheckbox 
+              label="I am assigned as a Class Teacher" 
+              isChecked={isClassTeacher} 
+              onChange={setIsClassTeacher} 
+            />
+
             <CustomDropdown 
               label="Registered School" 
               value={school} 

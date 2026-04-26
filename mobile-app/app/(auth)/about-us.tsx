@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { 
   View, 
   Text, 
@@ -7,52 +7,103 @@ import {
   TouchableOpacity, 
   Image,
   Linking,
-  Dimensions
+  Dimensions,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather } from "@expo/vector-icons";
-import { useRouter, Stack } from "expo-router";
+import { useRouter, Stack, useLocalSearchParams } from "expo-router";
 
 const { width } = Dimensions.get("window");
 
-// --- S. THOMAS' COLLEGE DATA ---
-const schoolDetails = {
-  name: "S. Thomas' College",
-  tagline: "Esto Perpetua", // The school's famous motto
-  description: "Founded in 1851, S. Thomas' College is a prestigious educational institution with a rich Anglican heritage. We are dedicated to producing well-rounded gentlemen by fostering academic excellence, exceptional sportsmanship, and strong moral character.",
-  contact: {
-    phone: "+94 11 271 2270",
-    email: "warden@stc.lk",
-    website: "www.stcmount.com",
-    address: "Hotel Road, Mount Lavinia, Sri Lanka"
-  },
-  social: [
-    { icon: "facebook", color: "#1877F2", link: "https://facebook.com/stcmount" },
-    { icon: "twitter", color: "#1DA1F2", link: "https://twitter.com/stcmount" },
-    { icon: "instagram", color: "#E4405F", link: "https://instagram.com/stcmount" },
-    { icon: "linkedin", color: "#0A66C2", link: "https://linkedin.com/school/s-thomas-college" }
-  ]
-};
-
 export default function AboutUsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const email = (params.email as string) || "";
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [schoolDetails, setSchoolDetails] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchSchoolInfo = async () => {
+      if (!email) {
+        setIsLoading(false);
+        return;
+      }
+      
+      try {
+        const timestamp = new Date().getTime();
+        const response = await fetch(`http://172.20.10.7:5000/api/school/profile-by-user/${email}?t=${timestamp}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Map database columns to our UI structure
+          setSchoolDetails({
+            name: data.name || "School Portal",
+            tagline: data.slogan || "Welcome to our institution.",
+            description: data.bio || "No description provided yet.",
+            // STRICT CHECK: Ensure it's not empty, undefined, or literally the word "null"
+            logo: (data.logo_url && data.logo_url !== "null" && data.logo_url.trim() !== "") ? data.logo_url : null,
+            contact: {
+              phone: data.phone || "Not provided",
+              email: data.email || "Not provided",
+              website: data.website || "Not provided",
+              address: data.address || "Not provided"
+            },
+            social: [
+              { id: 'facebook', icon: "facebook", color: "#1877F2", link: data.facebook_url },
+              { id: 'instagram', icon: "instagram", color: "#E4405F", link: data.instagram_url },
+              { id: 'linkedin', icon: "linkedin", color: "#0A66C2", link: data.linkedin_url }
+            ].filter(s => s.link && s.link.trim() !== "" && s.link !== "null")
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch school info:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSchoolInfo();
+  }, [email]);
 
   const handlePress = (type: string, value: string) => {
+    if (!value || value === "Not provided" || value === "null") return;
+    
     let url = "";
     switch(type) {
       case "phone": url = `tel:${value}`; break;
       case "email": url = `mailto:${value}`; break;
-      case "web": url = `https://${value}`; break;
+      case "web": url = value.startsWith('http') ? value : `https://${value}`; break;
       case "map": url = `http://googleusercontent.com/maps.google.com/?q=${value}`; break;
-      default: url = value;
+      default: url = value.startsWith('http') ? value : `https://${value}`;
     }
     Linking.openURL(url).catch(err => console.error("Couldn't load page", err));
   };
 
+  if (isLoading) {
+    return (
+      <View style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#2563EB" />
+        <Text style={{ marginTop: 10, color: "#64748B" }}>Loading School Info...</Text>
+      </View>
+    );
+  }
+
+  if (!schoolDetails) {
+    return (
+      <View style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: "#64748B" }}>Unable to load school information.</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
+          <Text style={{ color: "#2563EB" }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      
-      {/* Hide the default Expo Router header */}
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* CUSTOM HEADER */}
@@ -68,12 +119,17 @@ export default function AboutUsScreen() {
         
         {/* CENTERED LOGO & TITLE SECTION */}
         <View style={styles.logoSection}>
-          <Image 
-            // MAKE SURE THIS FILE EXISTS IN YOUR ASSETS FOLDER
-            source={require('../../assets/stc_logo.jpg')} 
-            style={styles.schoolLogo} 
-            resizeMode="contain"
-          />
+          {schoolDetails.logo ? (
+            <Image 
+              source={{ uri: schoolDetails.logo }} 
+              style={styles.schoolLogo} 
+              resizeMode="contain"
+            />
+          ) : (
+            <View style={[styles.schoolLogo, { backgroundColor: '#E0E7FF', justifyContent: 'center', alignItems: 'center' }]}>
+               <FontAwesome6 name="school" size={40} color="#2563EB" />
+            </View>
+          )}
           <Text style={styles.schoolName}>{schoolDetails.name}</Text>
           <Text style={styles.schoolTagline}>{schoolDetails.tagline}</Text>
         </View>
@@ -137,21 +193,23 @@ export default function AboutUsScreen() {
           </View>
 
           {/* SOCIAL MEDIA BUTTONS */}
-          <View style={styles.socialContainer}>
-            {schoolDetails.social.map((social, index) => (
-              <TouchableOpacity 
-                key={index} 
-                style={[styles.socialBtn, { backgroundColor: social.color + '15' }]} 
-                onPress={() => handlePress('link', social.link)}
-              >
-                <FontAwesome6 name={social.icon as any} size={22} color={social.color} />
-              </TouchableOpacity>
-            ))}
-          </View>
+          {schoolDetails.social && schoolDetails.social.length > 0 && (
+            <View style={styles.socialContainer}>
+              {schoolDetails.social.map((social: any) => (
+                <TouchableOpacity 
+                  key={social.id} 
+                  style={[styles.socialBtn, { backgroundColor: social.color + '15' }]} 
+                  onPress={() => handlePress('link', social.link)}
+                >
+                  <FontAwesome6 name={social.icon as any} size={22} color={social.color} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* FOOTER */}
           <Text style={styles.footerText}>School Connect App v1.0.0</Text>
-          <Text style={styles.footerSubText}>© 2026 Windows Companies. All rights reserved.</Text>
+          <Text style={styles.footerSubText}>© 2026 Booking Window Companies. All rights reserved.</Text>
 
         </View>
       </ScrollView>
@@ -171,7 +229,7 @@ const styles = StyleSheet.create({
   
   /* LOGO STYLES */
   logoSection: { alignItems: "center", paddingTop: 30, paddingHorizontal: 24 },
-  schoolLogo: { width: 110, height: 110, marginBottom: 16 },
+  schoolLogo: { width: 110, height: 110, borderRadius: 16, marginBottom: 16 },
   schoolName: { fontSize: 26, fontWeight: "bold", color: "#1E293B", textAlign: "center" },
   schoolTagline: { fontSize: 14, color: "#64748B", marginTop: 4, fontWeight: "500", textAlign: "center", fontStyle: "italic" },
   

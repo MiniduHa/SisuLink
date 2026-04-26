@@ -6,17 +6,11 @@ import {
   ScrollView, 
   TouchableOpacity, 
   Dimensions,
-  Image,
-  ImageBackground
+  Image
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context"; 
 import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
-
-// ==========================================
-// IMPORT THE MASTER CALENDAR DATA!
-// ==========================================
-import { sharedCalendarEvents } from "../(auth)/calendar";
 
 const { width } = Dimensions.get("window");
 
@@ -109,23 +103,6 @@ export default function ParentDashboard() {
     child_ids: JSON.stringify(childrenList),
     profile_photo_url: parentData.profile_photo_url
   });
-
-  // ==========================================
-  // LATEST NEWS DYNAMIC FILTER
-  // Reads directly from sharedCalendarEvents!
-  // ==========================================
-  const pastSpecialEvents = sharedCalendarEvents
-    .filter(event => {
-      // It must be marked special, AND the date must be in the past
-      const isPast = new Date(event.date) < new Date(); 
-      return event.isSpecial && isPast;
-    })
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
-
-  const formatDateForNews = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString('en-US', options);
-  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -280,27 +257,6 @@ export default function ParentDashboard() {
                 </View>
               </View>
 
-              {/* LATEST NEWS SECTION */}
-              <View style={styles.sectionHeaderNew}>
-                <Text style={styles.sectionTitleNew}>LATEST SCHOOL NEWS</Text>
-                <TouchableOpacity onPress={() => router.push("/(auth)/calendar")}>
-                  <Text style={styles.sectionLink}>View Calendar</Text>
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.newsCarouselScroll}>
-                {pastSpecialEvents.map((news) => (
-                  <TouchableOpacity key={news.id} style={styles.newsCard} activeOpacity={0.9}>
-                    <ImageBackground source={{ uri: news.image }} style={styles.newsImage} imageStyle={{ borderRadius: 16 }}>
-                      <View style={styles.newsOverlay}>
-                        <Text style={styles.newsDate}>{formatDateForNews(news.date)}</Text>
-                        <Text style={styles.newsTitle} numberOfLines={2}>{news.title}</Text>
-                      </View>
-                    </ImageBackground>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
               <View style={styles.sectionHeaderNew}>
                 <Text style={styles.sectionTitleNew}>RECENT MESSAGES</Text>
                 <TouchableOpacity onPress={() => router.push({ pathname: "/(parent-tabs)/parent-messages", params: getNavParams() })}>
@@ -427,12 +383,6 @@ const styles = StyleSheet.create({
   eventTitle: { fontSize: 16, fontWeight: "800", color: "#1E293B", marginTop: 5 },
   paymentStatus: { fontSize: 12, fontWeight: "500", color: "#64748B" },
   paymentAmount: { fontSize: 16, fontWeight: "800", color: "#1E293B", marginTop: 5 },
-  newsCarouselScroll: { paddingBottom: 10, marginBottom: 20 },
-  newsCard: { width: width * 0.75, height: 160, marginRight: 15, borderRadius: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
-  newsImage: { width: "100%", height: "100%", justifyContent: "flex-end" },
-  newsOverlay: { backgroundColor: "rgba(0,0,0,0.5)", padding: 15, borderBottomLeftRadius: 16, borderBottomRightRadius: 16 },
-  newsDate: { color: "#E2E8F0", fontSize: 11, fontWeight: "600", marginBottom: 4 },
-  newsTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
   messagesList: { marginBottom: 20 },
   messageCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", padding: 15, borderRadius: 20, marginBottom: 15, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   messageCardUnread: { backgroundColor: "#F8FAFC", borderColor: "#E0F2FE", borderWidth: 1 },

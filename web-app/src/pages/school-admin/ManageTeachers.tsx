@@ -63,8 +63,11 @@ export default function ManageTeachers() {
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [messageForm, setMessageForm] = useState({ recipientType: 'all', targetSection: '', targetTeacherId: '', subject: '', messageBody: '' });
   
-  // FIXED: Added password to the form data state
-  const [formData, setFormData] = useState({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '' });
+  // FIXED: Added isClassTeacher to form state
+  const [formData, setFormData] = useState({ 
+    fullName: '', staffId: '', email: '', phone: '', department: '', 
+    subject: '', medium: '', status: 'Active', password: '', isClassTeacher: false 
+  });
 
   useEffect(() => {
     const storedUser = localStorage.getItem('schoolConnectUser');
@@ -98,6 +101,7 @@ export default function ManageTeachers() {
           email: t.email || "No Email",
           phone: t.phone_number || "N/A",
           status: t.status || "Active",
+          isClassTeacher: t.is_class_teacher || false, // Fetch boolean
           joined: new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         }));
         setTeachers(formattedTeachers);
@@ -124,7 +128,6 @@ export default function ManageTeachers() {
   const handleAddTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    // FIXED: Dynamically send the password entered by the Admin
     const payload = { ...formData, teacherEmail: formData.email };
     try {
       const response = await fetch(`http://localhost:5000/api/school-admin/${adminEmail}/teachers`, {
@@ -132,7 +135,7 @@ export default function ManageTeachers() {
       });
       if (response.ok) {
         setIsAddModalOpen(false);
-        setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '' });
+        setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '', isClassTeacher: false });
         fetchTeachers(adminEmail);
       } else {
         const data = await response.json();
@@ -145,7 +148,8 @@ export default function ManageTeachers() {
     setEditingDbId(teacher.dbId);
     setFormData({
       fullName: teacher.name, staffId: teacher.id, email: teacher.email, phone: teacher.phone === "N/A" ? "" : teacher.phone,
-      department: teacher.department, subject: teacher.subject === "Not Assigned" ? "" : teacher.subject, medium: teacher.medium, status: teacher.status, password: ''
+      department: teacher.department, subject: teacher.subject === "Not Assigned" ? "" : teacher.subject, 
+      medium: teacher.medium, status: teacher.status, password: '', isClassTeacher: teacher.isClassTeacher
     });
     setIsEditModalOpen(true);
   };
@@ -161,7 +165,7 @@ export default function ManageTeachers() {
       if (response.ok) {
         setIsEditModalOpen(false);
         setEditingDbId(null);
-        setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '' });
+        setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '', isClassTeacher: false });
         fetchTeachers(adminEmail); 
       } else {
         const data = await response.json();
@@ -181,7 +185,7 @@ export default function ManageTeachers() {
         body: JSON.stringify({
           fullName: teacherToUpdate.name, teacherEmail: teacherToUpdate.email, phone: teacherToUpdate.phone === "N/A" ? "" : teacherToUpdate.phone,
           staffId: teacherToUpdate.id, department: teacherToUpdate.department, subject: teacherToUpdate.subject === "Not Assigned" ? "" : teacherToUpdate.subject,
-          medium: teacherToUpdate.medium, status: newStatus 
+          medium: teacherToUpdate.medium, status: newStatus, isClassTeacher: teacherToUpdate.isClassTeacher 
         }),
       });
     } catch (err) { console.error("Failed to update status", err); }
@@ -241,7 +245,7 @@ export default function ManageTeachers() {
           <button onClick={() => setIsMessageModalOpen(true)} className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm">
             <MessageSquare size={18} /> Message Staff
           </button>
-          <button onClick={() => { setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '' }); setIsAddModalOpen(true); }} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm">
+          <button onClick={() => { setFormData({ fullName: '', staffId: '', email: '', phone: '', department: '', subject: '', medium: '', status: 'Active', password: '', isClassTeacher: false }); setIsAddModalOpen(true); }} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm">
             <Plus size={18} /> Add Teacher
           </button>
         </div>
@@ -291,6 +295,12 @@ export default function ManageTeachers() {
                           <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 mt-0.5">
                             <BookOpen size={12} className="text-blue-500" /> 
                             <span className="font-semibold text-slate-700">{teacher.subject}</span> • {teacher.department} • {teacher.id}
+                            {/* NEW: Class Teacher Badge */}
+                            {teacher.isClassTeacher && (
+                              <span className="ml-2 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-bold uppercase tracking-wider border border-purple-200">
+                                Class Teacher
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -407,7 +417,6 @@ export default function ManageTeachers() {
                     </div>
                   )}
                   
-                  {/* FIXED: Conditionally render Password input or Status toggle based on add/edit mode */}
                   {isEditModalOpen ? (
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Account Status</label>
@@ -424,6 +433,20 @@ export default function ManageTeachers() {
                     </div>
                   )}
                 </div>
+
+                {/* NEW: Web Dashboard Class Teacher Checkbox */}
+                <div className="flex flex-col gap-1.5 sm:col-span-2 mt-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={formData.isClassTeacher} 
+                      onChange={(e) => setFormData({...formData, isClassTeacher: e.target.checked})} 
+                      className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer" 
+                    />
+                    <span className="text-sm font-semibold text-slate-700">This teacher is assigned as a Class Teacher</span>
+                  </label>
+                </div>
+
               </form>
             </div>
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
@@ -448,7 +471,14 @@ export default function ManageTeachers() {
                   {(selectedTeacher.name || "T").charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-800">{selectedTeacher.name}</h2>
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    {selectedTeacher.name}
+                    {selectedTeacher.isClassTeacher && (
+                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-bold uppercase tracking-wider border border-purple-200">
+                        Class Teacher
+                      </span>
+                    )}
+                  </h2>
                   <p className="text-sm font-semibold text-slate-500">Staff ID: {selectedTeacher.id}</p>
                   <span className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                     selectedTeacher.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 

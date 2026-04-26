@@ -162,7 +162,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Public Application Registration Route (Mobile App)
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { role, email, password } = req.body;
@@ -174,13 +173,17 @@ app.post('/api/auth/register', async (req, res) => {
       
       let school_id = null;
       if (school_name) {
-        const schoolRes = await db.query('SELECT id FROM schools WHERE name = $1', [school_name]);
+        const schoolRes = await db.query('SELECT id FROM schools WHERE name ILIKE $1', [school_name.trim()]);
         if (schoolRes.rows.length > 0) school_id = schoolRes.rows[0].id;
+      }
+
+      if (!school_id) {
+        return res.status(400).json({ error: `Could not verify the school: "${school_name}". Please check the spelling.` });
       }
 
       const result = await db.query(
         `INSERT INTO students (first_name, last_name, email, password, grade_level, index_number, school_name, school_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, first_name, last_name, email`,
-        [first_name, last_name, email, hashedPassword, grade_level, index_number, school_name, school_id]
+        [first_name, last_name, email, hashedPassword, grade_level, index_number, school_name.trim(), school_id]
       );
       return res.status(201).json({ message: "Student registered successfully!", user: result.rows[0] });
       
@@ -201,17 +204,21 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(201).json({ message: "Parent registered successfully!", user: result.rows[0] });
 
     } else if (role === 'Teacher') {
-      const { full_name, phone_number, staff_id, department, medium, school_name } = req.body;
+      const { full_name, phone_number, staff_id, department, medium, school_name, subject, is_class_teacher } = req.body;
       
       let school_id = null;
       if (school_name) {
-        const schoolRes = await db.query('SELECT id FROM schools WHERE name = $1', [school_name]);
+        const schoolRes = await db.query('SELECT id FROM schools WHERE name ILIKE $1', [school_name.trim()]);
         if (schoolRes.rows.length > 0) school_id = schoolRes.rows[0].id;
       }
 
+      if (!school_id) {
+        return res.status(400).json({ error: `Could not verify the school: "${school_name}". Please check the spelling.` });
+      }
+
       const result = await db.query(
-        `INSERT INTO teachers (full_name, email, phone_number, password, staff_id, department, medium, school_name, school_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, full_name, email`,
-        [full_name, email, phone_number, hashedPassword, staff_id, department, medium, school_name, school_id]
+        `INSERT INTO teachers (full_name, email, phone_number, password, staff_id, department, medium, school_name, school_id, subject, is_class_teacher) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, full_name, email`,
+        [full_name, email, phone_number, hashedPassword, staff_id, department, medium, school_name.trim(), school_id, subject, is_class_teacher || false]
       );
       return res.status(201).json({ message: "Teacher registered successfully!", user: result.rows[0] });
 
@@ -381,7 +388,7 @@ app.get('/api/student/:studentId/dashboard', async (req, res) => {
 });
 
 
-// ---> NEW: REAL DB TEACHER DASHBOARD ROUTE <---
+// ---> REAL DB TEACHER DASHBOARD ROUTE <---
 app.get('/api/teacher/:email/dashboard', async (req, res) => {
   try {
     const { email } = req.params;
@@ -393,9 +400,13 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
     const teacher = teacherRes.rows[0];
     const teacherDbId = teacher.id;
 
-    // Determine current day of the week (e.g., 'Monday')
+    // Determine current day of the week 
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const todayName = days[new Date().getDay()];
+
+    // Generate strict local boundary for "Today" so Postgres doesn't default to UTC yesterday
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
     // 2. Query REAL Timetable from class_timetables
     const timetableRes = await db.query(
@@ -408,7 +419,6 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
     );
 
     const todaysClasses = timetableRes.rows.map((cls, index) => {
-      // Rotate colors for nice UI
       const colors = ["#DBEAFE", "#D1FAE5", "#FEF3C7", "#FCE7F3", "#E0E7FF"];
       const iconColors = ["#2563EB", "#059669", "#D97706", "#DB2777", "#4F46E5"];
       
@@ -418,13 +428,13 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
         grade: `${cls.grade} - ${cls.section}`,
         time: cls.time_slot,
         room: cls.room_number || "TBD",
-        students: 40, // standard capacity
+        students: 40, 
         color: colors[index % colors.length],
         iconColor: iconColors[index % iconColors.length]
       };
     });
 
-    // Fetch Special Events (Finished, visible for up to 14 days after event)
+    // Fetch Special Events (Filtered against strict local boundary)
     let specialEvents = [];
     try {
       const specialRes = await db.query(
@@ -432,10 +442,10 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
          FROM events 
          WHERE school_id = $1 
          AND is_special = true 
-         AND event_date < CURRENT_DATE 
-         AND event_date >= CURRENT_DATE - INTERVAL '14 days' 
+         AND event_date < $2 
+         AND event_date >= $2 - INTERVAL '14 days' 
          ORDER BY event_date DESC`,
-        [teacher.school_id]
+        [teacher.school_id, todayStart]
       );
       if (specialRes.rows.length > 0) {
         specialEvents = specialRes.rows.map(evt => ({
@@ -451,7 +461,7 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
       console.error("Failed to fetch special events:", err);
     }
     
-    // Fetch Urgent Notice (High priority only, audience Teachers or All)
+    // Fetch Urgent Notice (NO date filter - keeps past active urgent notices visible)
     let urgentNoticeData = [];
     try {
       const noticeRes = await db.query(
@@ -459,7 +469,7 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
          FROM notices 
          WHERE school_id = $1 
          AND priority = 'High' 
-         AND (audience = 'Teaching Staff' OR audience = 'All students, parents and teachers') 
+         AND (audience = 'Teaching Staff' OR audience = 'All students, parents and teachers' OR audience = 'All') 
          AND status = 'Published' 
          ORDER BY created_at DESC`,
         [teacher.school_id]
@@ -483,7 +493,35 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
       console.error("Failed to fetch urgent notice:", err);
     }
 
-    // 4. Calculate actual total distinct students taught by this teacher based on enrolled subjects
+    // Fetch ALL Relevant Notices for Notification Dropdown (NO DATE FILTER)
+    let allNotices = [];
+    try {
+      const allNoticesRes = await db.query(
+        `SELECT id, title, content, priority, created_at 
+         FROM notices 
+         WHERE school_id = $1 
+         AND (audience = 'Teaching Staff' OR audience = 'All students, parents and teachers' OR audience = 'All') 
+         AND status = 'Published' 
+         ORDER BY created_at DESC 
+         LIMIT 15`,
+        [teacher.school_id]
+      );
+      
+      allNotices = allNoticesRes.rows.map(n => {
+        const dateObj = new Date(n.created_at);
+        return {
+          id: n.id,
+          title: n.title,
+          body: n.content,
+          priority: n.priority,
+          time: dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + " at " + dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+      });
+    } catch (err) {
+      console.error("Failed to fetch all notices:", err);
+    }
+
+    // 4. Calculate actual total distinct students taught by this teacher
     let realTotalStudents = 0;
     try {
       const studentCountRes = await db.query(
@@ -517,8 +555,10 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
       },
       todaysClasses,
       urgentNoticeData,
+      allNotices, 
       specialEvents,
-      stats
+      stats,
+      currentDay: todayName 
     });
 
   } catch (error) {
@@ -527,7 +567,7 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
   }
 });
 
-// ---> NEW: TEACHER ALL EVENTS ROUTE <---
+// ---> TEACHER ALL EVENTS ROUTE <---
 app.get('/api/teacher/:email/events', async (req, res) => {
   try {
     const { email } = req.params;
@@ -551,7 +591,7 @@ app.get('/api/teacher/:email/events', async (req, res) => {
   }
 });
 
-// ---> NEW: TEACHER FULL TIMETABLE ROUTE <---
+// ---> TEACHER FULL TIMETABLE ROUTE <---
 app.get('/api/teacher/:email/timetable', async (req, res) => {
   try {
     const { email } = req.params;
@@ -577,7 +617,7 @@ app.get('/api/teacher/:email/timetable', async (req, res) => {
   }
 });
 
-// ---> NEW: TEACHER STUDENTS LIST ROUTE <---
+// ---> TEACHER STUDENTS LIST ROUTE <---
 app.get('/api/teacher/:email/students', async (req, res) => {
   try {
     const { email } = req.params;
@@ -661,7 +701,6 @@ app.post('/api/school-admin/upload-event-image', upload.single('image'), async (
 
     console.log(`[DEBUG] Attempting upload: ${fileName}, size: ${file.size} bytes, type: ${file.mimetype}`);
 
-    // Upload to avatars bucket for simplicity, or event_images if it existed.
     const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file.buffer, { 
       contentType: file.mimetype, 
       upsert: true 
@@ -692,6 +731,84 @@ app.post('/api/teacher/remove-avatar', async (req, res) => {
     res.status(500).json({ error: "Server error removing teacher photo." });
   }
 });
+
+
+// ---> SCHOOL PROFILE API ROUTES <---
+
+// GET School Profile
+app.get('/api/school-admin/:email/profile', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const result = await db.query('SELECT * FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
+    if (result.rows.length === 0) return res.status(404).json({ error: "School not found" });
+    res.json(result.rows[0]);
+  } catch (error) { 
+    console.error("Fetch Profile Error:", error);
+    res.status(500).json({ error: "Failed to fetch school profile." }); 
+  }
+});
+
+// UPDATE School Profile
+app.put('/api/school-admin/:email/profile', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { logo_url, slogan, bio, phone, website, address, facebook, instagram, linkedin } = req.body;
+    
+    const result = await db.query(
+      `UPDATE schools 
+       SET logo_url = $1, slogan = $2, bio = $3, phone = $4, website = $5, address = $6, facebook_url = $7, instagram_url = $8, linkedin_url = $9
+       WHERE email = $10 RETURNING *`,
+      [logo_url, slogan, bio, phone, website, address, facebook, instagram, linkedin, email.toLowerCase().trim()]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "School not found" });
+    res.json({ message: "School profile updated successfully!", school: result.rows[0] });
+  } catch (error) { 
+    console.error("Update Profile Error:", error);
+    res.status(500).json({ error: "Failed to update profile." }); 
+  }
+});
+
+// ---> FETCH PUBLIC SCHOOL PROFILE BY USER EMAIL (FOR MOBILE APP) <---
+app.get('/api/school/profile-by-user/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1. Determine which school this user belongs to
+    let schoolId = null;
+
+    let result = await db.query('SELECT school_id FROM students WHERE email = $1', [cleanEmail]);
+    if (result.rows.length > 0) schoolId = result.rows[0].school_id;
+
+    if (!schoolId) {
+      result = await db.query('SELECT school_id FROM teachers WHERE email = $1', [cleanEmail]);
+      if (result.rows.length > 0) schoolId = result.rows[0].school_id;
+    }
+
+    if (!schoolId) {
+      result = await db.query('SELECT school_id FROM parents WHERE email = $1', [cleanEmail]);
+      if (result.rows.length > 0) schoolId = result.rows[0].school_id;
+    }
+
+    if (!schoolId) return res.status(404).json({ error: "User or associated school not found." });
+
+    // 2. Fetch the school profile
+    const schoolRes = await db.query(
+      `SELECT name, logo_url, slogan, bio, phone, email, website, address, facebook_url, instagram_url, linkedin_url 
+       FROM schools WHERE id = $1`, 
+      [schoolId]
+    );
+
+    if (schoolRes.rows.length === 0) return res.status(404).json({ error: "School profile not found." });
+
+    res.json(schoolRes.rows[0]);
+  } catch (error) {
+    console.error("Fetch App School Profile Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch school profile." });
+  }
+});
+
 
 // --- STUDENT PROFILE ROUTING ---
 app.post('/api/profile/upload-avatar', upload.single('photo'), async (req, res) => {
@@ -742,6 +859,117 @@ app.put('/api/parents/update', async (req, res) => {
     res.json({ message: "Profile updated successfully", user: result.rows[0] });
   } catch (error) { res.status(500).json({ error: "Server error updating parent profile." }); }
 });
+
+// ---> NEW: TEACHING MATERIALS MANAGEMENT <---
+
+// 1. Upload Material File to Supabase
+app.post('/api/teacher/upload-material', upload.single('file'), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No file uploaded." });
+
+    const fileExt = file.originalname ? file.originalname.split('.').pop() : 'pdf';
+    const fileName = `material_${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file.buffer, { 
+      contentType: file.mimetype, 
+      upsert: true 
+    });
+    
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+    res.json({ message: "File uploaded successfully", fileUrl: publicUrl });
+  } catch (error) {
+    console.error("Error uploading material file:", error);
+    res.status(500).json({ error: "Server error during file upload." });
+  }
+});
+
+// 2. Save Material Metadata to Database
+app.post('/api/teacher/:email/materials', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { title, materialType, gradeLevel, subject, fileUrl, description } = req.body;
+
+    const teacherRes = await db.query('SELECT id, school_id FROM teachers WHERE email = $1', [email.toLowerCase().trim()]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    
+    const teacherDbId = teacherRes.rows[0].id;
+    const schoolId = teacherRes.rows[0].school_id;
+
+    const result = await db.query(
+      `INSERT INTO teaching_materials (school_id, teacher_id, title, material_type, grade_level, subject, file_url, description) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [schoolId, teacherDbId, title, materialType, gradeLevel, subject, fileUrl, description]
+    );
+
+    res.status(201).json({ message: "Material added successfully!", material: result.rows[0] });
+  } catch (error) {
+    console.error("Add Material Error:", error.message);
+    res.status(500).json({ error: "Failed to save material to database." });
+  }
+});
+
+// 3. Fetch Teacher's Uploaded Materials
+app.get('/api/teacher/:email/materials', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    const teacherRes = await db.query('SELECT id FROM teachers WHERE email = $1', [email.toLowerCase().trim()]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+
+    const result = await db.query(
+      `SELECT * FROM teaching_materials WHERE teacher_id = $1 ORDER BY created_at DESC`,
+      [teacherRes.rows[0].id]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Fetch Materials Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch materials." });
+  }
+});
+
+// 4. Fetch Materials For a Specific Student (Based on Grade & Subject)
+app.get('/api/student/:studentId/materials', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    
+    const studentRes = await db.query('SELECT school_id, grade_level, subjects FROM students WHERE index_number = $1', [studentId]);
+    if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
+
+    const student = studentRes.rows[0];
+    
+    let studentSubjects = [];
+    try {
+       studentSubjects = typeof student.subjects === 'string' ? JSON.parse(student.subjects) : student.subjects;
+    } catch (e) {
+       console.error("Could not parse student subjects", e);
+    }
+
+    const materialsRes = await db.query(
+      `SELECT tm.*, t.full_name as teacher_name 
+       FROM teaching_materials tm
+       JOIN teachers t ON tm.teacher_id = t.id
+       WHERE tm.school_id = $1 AND tm.grade_level = $2
+       ORDER BY tm.created_at DESC`,
+      [student.school_id, student.grade_level]
+    );
+
+    const relevantMaterials = materialsRes.rows.filter(mat => 
+       mat.subject === 'General' || 
+       (studentSubjects && studentSubjects.includes(mat.subject)) ||
+       !studentSubjects || studentSubjects.length === 0 
+    );
+
+    res.json(relevantMaterials);
+  } catch (error) {
+    console.error("Student Materials Error:", error);
+    res.status(500).json({ error: "Failed to fetch materials." });
+  }
+});
+
 
 // --- START THE SERVER ---
 const PORT = process.env.PORT || 5000;

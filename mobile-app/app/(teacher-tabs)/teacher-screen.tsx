@@ -15,33 +15,32 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 
-
 const { width } = Dimensions.get("window");
 
 export default function TeacherDashboard() {
   const router = useRouter(); 
   const params = useLocalSearchParams();
   
-  // Extract initial parameters passed from the Login screen
   const initialEmail = (params.email as string) || "";
   const initialName = (params.full_name as string) || "Teacher";
 
-  // --- DYNAMIC STATE FOR REAL DATA ---
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<any>({
     teacher: { full_name: initialName, staff_id: "", email: initialEmail, profile_photo: null },
     todaysClasses: [],
     specialEvents: [],
     urgentNoticeData: [],
+    allNotices: [], // NEW: Store all notices for the dropdown
     stats: { totalClassesToday: 0, totalStudents: 0 }
   });
 
-  // --- MODAL STATE ---
   const [isStudentsModalVisible, setStudentsModalVisible] = useState(false);
   const [teacherStudents, setTeacherStudents] = useState<any[]>([]);
   const [isStudentsLoading, setIsStudentsLoading] = useState(false);
 
-  // --- FETCH REAL DATA FROM BACKEND ---
+  // NEW: State for the Notification Dropdown
+  const [isNoticesVisible, setIsNoticesVisible] = useState(false);
+
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
@@ -51,7 +50,6 @@ export default function TeacherDashboard() {
         setIsLoading(true);
         try {
           const timestamp = new Date().getTime();
-          // Adjust this IP to your machine's IP!
           const response = await fetch(`http://172.20.10.7:5000/api/teacher/${initialEmail}/dashboard?t=${timestamp}`);
           
           if (response.ok && isActive) {
@@ -98,7 +96,6 @@ export default function TeacherDashboard() {
     }
   };
 
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={{ flex: 1 }}>
@@ -123,9 +120,16 @@ export default function TeacherDashboard() {
                 <Text style={styles.subtext}>ID: {dashboardData.teacher.staff_id}</Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.notificationButton}>
+
+            {/* NOTIFICATION BUTTON */}
+            <TouchableOpacity style={styles.notificationButton} onPress={() => setIsNoticesVisible(true)}>
               <Ionicons name="notifications-outline" size={26} color="#1E293B" />
-              <View style={styles.notificationBadge} />
+              {/* Dynamic Badge showing the count of notices */}
+              {dashboardData.allNotices && dashboardData.allNotices.length > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.badgeText}>{dashboardData.allNotices.length}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -147,7 +151,7 @@ export default function TeacherDashboard() {
 
             {/* TODAY'S SCHEDULE */}
             <View style={styles.sectionHeaderNew}>
-              <Text style={styles.sectionTitleNew}>TODAY'S SCHEDULE</Text>
+              <Text style={styles.sectionTitleNew}>{dashboardData.currentDay ? dashboardData.currentDay.toUpperCase() : "TODAY"}'S SCHEDULE</Text>
               <TouchableOpacity onPress={() => router.push({ pathname: "/(teacher-tabs)/teacher-timetable", params: getNavParams() })}>
                 <Text style={styles.sectionLink}>View Timetable</Text>
               </TouchableOpacity>
@@ -183,7 +187,7 @@ export default function TeacherDashboard() {
               )}
             </ScrollView>
 
-            {/* URGENT NOTICE (Only renders if there is data in the DB) */}
+            {/* URGENT NOTICE */}
             {dashboardData.urgentNoticeData && dashboardData.urgentNoticeData.length > 0 && (
               dashboardData.urgentNoticeData.map((notice: any) => (
                 <View key={notice.id} style={styles.urgentNoticeCard}>
@@ -199,9 +203,6 @@ export default function TeacherDashboard() {
                 </View>
               ))
             )}
-
-
-
 
             {/* LATEST NEWS SECTION */}
             <View style={styles.sectionHeaderNew}>
@@ -237,6 +238,7 @@ export default function TeacherDashboard() {
         <View style={styles.bottomTabBar}>
           {[ 
             { icon: "home", label: "Home", route: "/(teacher-tabs)/teacher-screen" }, 
+            { icon: "folder", label: "Materials", route: "/(teacher-tabs)/teacher-materials" },
             { icon: "users", label: "Classes", route: null }, 
             { icon: "calendar", label: "Calendar", route: "/(auth)/calendar", params: { email: initialEmail } }, 
             { icon: "info", label: "About Us", route: "/(auth)/about-us" } 
@@ -259,6 +261,48 @@ export default function TeacherDashboard() {
             );
           })}
         </View>
+
+        {/* --- MODAL FOR NOTIFICATIONS DROPDOWN --- */}
+        <Modal
+          visible={isNoticesVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsNoticesVisible(false)}
+        >
+          <TouchableOpacity 
+            style={styles.noticesOverlay} 
+            activeOpacity={1} 
+            onPress={() => setIsNoticesVisible(false)}
+          >
+            <View style={styles.noticesPopup}>
+              <View style={styles.noticesPopupHeader}>
+                <Text style={styles.noticesPopupTitle}>Notifications</Text>
+                <TouchableOpacity onPress={() => setIsNoticesVisible(false)}>
+                  <Feather name="x" size={20} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView style={styles.noticesScroll} showsVerticalScrollIndicator={false}>
+                {dashboardData.allNotices && dashboardData.allNotices.length > 0 ? (
+                  dashboardData.allNotices.map((notice: any) => (
+                    <View key={notice.id} style={styles.noticeListItem}>
+                      <View style={styles.noticeListIcon}>
+                        <FontAwesome6 name="bell" size={16} color={notice.priority === 'High' ? '#EF4444' : '#3B82F6'} />
+                      </View>
+                      <View style={styles.noticeListContent}>
+                        <Text style={styles.noticeListTitle}>{notice.title}</Text>
+                        <Text style={styles.noticeListBody} numberOfLines={2}>{notice.body}</Text>
+                        <Text style={styles.noticeListTime}>{notice.time}</Text>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.noNoticesText}>No new notifications.</Text>
+                )}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* MODAL FOR STUDENTS LIST */}
         <Modal
@@ -333,7 +377,8 @@ const styles = StyleSheet.create({
   greeting: { fontSize: 22, fontWeight: "bold", color: "#1E293B" },
   subtext: { fontSize: 13, color: "#64748B", marginTop: 3, fontWeight: "600" },
   notificationButton: { padding: 5, position: "relative" },
-  notificationBadge: { position: "absolute", top: 5, right: 6, width: 10, height: 10, borderRadius: 5, backgroundColor: "#EF4444", borderWidth: 2, borderColor: "#FFFFFF" },
+  notificationBadge: { position: "absolute", top: 2, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: "#EF4444", borderWidth: 1, borderColor: "#FFFFFF", justifyContent: 'center', alignItems: 'center' },
+  badgeText: { color: '#FFFFFF', fontSize: 8, fontWeight: 'bold' },
   
   dashboardContent: { paddingHorizontal: 24, marginTop: 20 },
   
@@ -370,8 +415,6 @@ const styles = StyleSheet.create({
   noticeTime: { fontSize: 11, color: "#9CA3AF" },
   noticeBody: { fontSize: 13, color: "#475569", lineHeight: 20, fontWeight: "500" },
 
-
-
   // News Carousel
   newsCarouselScroll: { paddingBottom: 10, marginBottom: 20 },
   newsCard: { width: width * 0.75, height: 160, marginRight: 15, borderRadius: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
@@ -385,7 +428,21 @@ const styles = StyleSheet.create({
   tabItem: { alignItems: "center", flex: 1 }, 
   tabLabel: { fontSize: 10, marginTop: 4, fontWeight: "600" },
 
-  // Modal Styles
+  // --- NEW: Notifications Dropdown Modal Styles ---
+  noticesOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
+  noticesPopup: { position: 'absolute', top: 70, right: 20, width: width * 0.75, maxHeight: 400, backgroundColor: '#FFFFFF', borderRadius: 16, shadowColor: '#000', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8, overflow: 'hidden' },
+  noticesPopupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#F8FAFC' },
+  noticesPopupTitle: { fontSize: 15, fontWeight: 'bold', color: '#1E293B' },
+  noticesScroll: { paddingHorizontal: 10, paddingVertical: 5 },
+  noticeListItem: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: '#F8FAFC', gap: 12 },
+  noticeListIcon: { marginTop: 2 },
+  noticeListContent: { flex: 1 },
+  noticeListTitle: { fontSize: 13, fontWeight: 'bold', color: '#1E293B', marginBottom: 3 },
+  noticeListBody: { fontSize: 12, color: '#64748B', marginBottom: 6 },
+  noticeListTime: { fontSize: 10, color: '#9CA3AF', fontWeight: '500' },
+  noNoticesText: { textAlign: 'center', padding: 30, color: '#64748B', fontStyle: 'italic', fontSize: 13 },
+
+  // Student Modal Styles
   modalOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.4)", justifyContent: "flex-end" },
   modalContent: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, height: Dimensions.get('window').height * 0.75, paddingBottom: 20 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
