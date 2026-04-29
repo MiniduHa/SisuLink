@@ -99,6 +99,7 @@ app.get('/api/school-admin/:email/parents', schoolAdminController.getParents);
 app.post('/api/school-admin/:email/parents', schoolAdminController.addParent);
 app.put('/api/school-admin/:email/parents/:parentId', schoolAdminController.updateParent);
 app.delete('/api/school-admin/:email/parents/:parentId', schoolAdminController.deleteParent);
+app.get('/api/school-admin/:email/analytics/academic-trends', schoolAdminController.getAcademicTrends);
 
 
 // --- AUTHENTICATION ROUTES ---
@@ -119,6 +120,30 @@ const initDB = async () => {
         is_read BOOLEAN DEFAULT FALSE
       )
     `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS student_grades (
+        id SERIAL PRIMARY KEY,
+        student_id VARCHAR(50) NOT NULL,
+        school_id VARCHAR(50),
+        subject_name VARCHAR(100) NOT NULL,
+        assessment_type VARCHAR(100) NOT NULL,
+        marks NUMERIC(5, 2),
+        grade VARCHAR(5) NOT NULL,
+        level VARCHAR(10),
+        trend VARCHAR(20) DEFAULT 'arrow-trend-up',
+        remarks TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Ensure all required columns exist (Migration logic)
+    await db.query("ALTER TABLE student_grades ALTER COLUMN school_id TYPE VARCHAR(50)");
+    await db.query("ALTER TABLE student_grades ADD COLUMN IF NOT EXISTS school_id VARCHAR(50)");
+    await db.query("ALTER TABLE student_grades ADD COLUMN IF NOT EXISTS marks NUMERIC(5, 2)");
+    await db.query("ALTER TABLE student_grades ADD COLUMN IF NOT EXISTS level VARCHAR(10)");
+    await db.query("ALTER TABLE student_grades ADD COLUMN IF NOT EXISTS remarks TEXT");
+
     console.log("✅ Database tables checked/initialized.");
   } catch (err) {
     console.error("Database Init Error:", err);

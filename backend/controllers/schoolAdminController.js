@@ -564,3 +564,40 @@ exports.deleteParent = async (req, res) => {
     res.status(500).json({ error: "Failed to delete parent." });
   }
 };
+
+// 28. Academic Trend Analysis
+exports.getAcademicTrends = async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    // Find school ID from admin email
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+    const schoolId = schoolResult.rows[0].id;
+
+    // Fetch average marks grouped by assessment type and level
+    // We pivot the levels (OL, AL) into columns for Recharts
+    const result = await db.query(
+      `SELECT 
+        assessment_type as term,
+        ROUND(AVG(CASE WHEN level = 'OL' THEN marks END), 2) as "OL",
+        ROUND(AVG(CASE WHEN level = 'AL' THEN marks END), 2) as "AL"
+       FROM student_grades 
+       WHERE school_id = $1 
+       GROUP BY assessment_type 
+       ORDER BY 
+         CASE 
+           WHEN assessment_type ILIKE '%Term 1%' THEN 1
+           WHEN assessment_type ILIKE '%Term 2%' THEN 2
+           WHEN assessment_type ILIKE '%Term 3%' THEN 3
+           ELSE 4
+         END`,
+      [schoolId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get Academic Trends Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch academic trends." });
+  }
+};
