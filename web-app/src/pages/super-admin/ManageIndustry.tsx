@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Mail, Phone, X, Building2, CheckCircle, XCircle, Eye, Globe, MapPin, Edit2, AlertCircle, Briefcase, CalendarDays } from 'lucide-react';
+import { Search, Mail, Phone, X, Building2, CheckCircle, XCircle, Eye, Globe, AlertCircle, Briefcase, CalendarDays } from 'lucide-react';
 
 export default function ManageIndustry() {
   const [partners, setPartners] = useState<any[]>([]);
@@ -40,9 +40,9 @@ export default function ManageIndustry() {
   };
 
   const filteredPartners = partners.filter(p => {
-    const matchesSearch = p.company_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          p.brn.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = p.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.brn.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -103,15 +103,15 @@ export default function ManageIndustry() {
         <div className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Search by company, email, or BRN..."
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <select 
+          <select
             className="px-4 py-2 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 outline-none min-w-[150px]"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -175,24 +175,23 @@ export default function ManageIndustry() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        partner.status === 'Active' ? 'bg-green-50 text-green-600' :
-                        partner.status === 'Pending' ? 'bg-amber-50 text-amber-600' :
-                        'bg-red-50 text-red-600'
-                      }`}>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${partner.status === 'Active' ? 'bg-green-50 text-green-600' :
+                          partner.status === 'Pending' ? 'bg-amber-50 text-amber-600' :
+                            'bg-red-50 text-red-600'
+                        }`}>
                         {partner.status}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <button 
+                        <button
                           onClick={() => setSelectedPartner(partner)}
                           className="p-2 hover:bg-white rounded-lg text-slate-400 hover:text-blue-600 transition-colors shadow-sm border border-transparent hover:border-slate-100"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
                         {partner.status === 'Pending' && (
-                          <button 
+                          <button
                             onClick={() => handleStatusUpdate(partner.id, 'Active')}
                             className="p-2 hover:bg-white rounded-lg text-slate-400 hover:text-green-600 transition-colors shadow-sm border border-transparent hover:border-slate-100"
                             title="Approve Partner"
@@ -201,7 +200,7 @@ export default function ManageIndustry() {
                           </button>
                         )}
                         {partner.status === 'Active' && (
-                          <button 
+                          <button
                             onClick={() => handleStatusUpdate(partner.id, 'Suspended')}
                             className="p-2 hover:bg-white rounded-lg text-slate-400 hover:text-red-600 transition-colors shadow-sm border border-transparent hover:border-slate-100"
                             title="Suspend Partner"
@@ -237,15 +236,15 @@ export default function ManageIndustry() {
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
-            
+
             <div className="p-8">
               <div className="flex flex-col md:flex-row gap-8 mb-8">
                 <div className="w-24 h-24 rounded-3xl bg-blue-50 flex items-center justify-center text-3xl font-bold text-blue-600 border-4 border-white shadow-lg overflow-hidden">
-                   {selectedPartner.logo_url ? (
-                     <img src={selectedPartner.logo_url} alt="" className="w-full h-full object-cover" />
-                   ) : (
-                     selectedPartner.company_name.charAt(0)
-                   )}
+                  {selectedPartner.logo_url ? (
+                    <img src={selectedPartner.logo_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    selectedPartner.company_name.charAt(0)
+                  )}
                 </div>
                 <div className="flex-1">
                   <h3 className="text-2xl font-bold text-slate-800 mb-1">{selectedPartner.company_name}</h3>
@@ -253,11 +252,10 @@ export default function ManageIndustry() {
                     <Briefcase className="w-4 h-4" /> {selectedPartner.industry_type} Partner
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    <span className={`px-4 py-1.5 rounded-full text-xs font-semibold ${
-                      selectedPartner.status === 'Active' ? 'bg-green-100 text-green-700' :
-                      selectedPartner.status === 'Pending' ? 'bg-amber-100 text-amber-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>
+                    <span className={`px-4 py-1.5 rounded-full text-xs font-semibold ${selectedPartner.status === 'Active' ? 'bg-green-100 text-green-700' :
+                        selectedPartner.status === 'Pending' ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-700'
+                      }`}>
                       {selectedPartner.status}
                     </span>
                     <span className="px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold">
@@ -287,7 +285,7 @@ export default function ManageIndustry() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="space-y-4">
                   <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Partnership Info</h4>
                   <div className="space-y-3">
@@ -311,14 +309,14 @@ export default function ManageIndustry() {
             </div>
 
             <div className="p-6 bg-slate-50 flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setSelectedPartner(null)}
                 className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-colors"
               >
                 Close
               </button>
               {selectedPartner.status !== 'Active' && (
-                <button 
+                <button
                   onClick={() => handleStatusUpdate(selectedPartner.id, 'Active')}
                   className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
                 >

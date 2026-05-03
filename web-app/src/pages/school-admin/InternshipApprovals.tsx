@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, Mail, Phone, X, Building2, CheckCircle, XCircle, Eye, Briefcase, CalendarDays, MapPin, BadgeCheck, Clock, AlertCircle } from 'lucide-react';
+import { Search, X, Building2, CheckCircle, XCircle, Briefcase, CalendarDays, MapPin, BadgeCheck, Clock, AlertCircle } from 'lucide-react';
 
 export default function InternshipApprovals() {
-  const [adminEmail, setAdminEmail] = useState('');
   const [internships, setInternships] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -14,7 +13,6 @@ export default function InternshipApprovals() {
     const storedUser = localStorage.getItem('sisuLinkUser');
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
-      setAdminEmail(parsedUser.email);
       fetchPendingInternships(parsedUser.email);
     }
   }, []);
@@ -44,8 +42,8 @@ export default function InternshipApprovals() {
     } catch (err) { console.error(err); }
   };
 
-  const filteredInternships = internships.filter(i => 
-    i.company_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredInternships = internships.filter(i =>
+    i.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     i.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     i.location.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -79,8 +77,8 @@ export default function InternshipApprovals() {
       {/* Search Bar */}
       <div className="relative mb-6">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-        <input 
-          type="text" 
+        <input
+          type="text"
           placeholder="Search by job title, company, or location..."
           className="w-full pl-12 pr-4 py-3 bg-white border border-slate-100 rounded-2xl shadow-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none"
           value={searchTerm}
@@ -94,11 +92,11 @@ export default function InternshipApprovals() {
           <div className="col-span-full py-12 text-center text-slate-400 font-medium">Loading pending opportunities...</div>
         ) : filteredInternships.length === 0 ? (
           <div className="col-span-full bg-white rounded-3xl p-12 border border-slate-100 shadow-sm text-center flex flex-col items-center">
-             <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                <BadgeCheck className="w-10 h-10 text-slate-200" />
-             </div>
-             <h3 className="text-xl font-bold text-slate-800">No Pending Approvals</h3>
-             <p className="text-slate-500 mt-1 max-w-sm">All internship posts have been reviewed. New posts from industry partners will appear here.</p>
+            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+              <BadgeCheck className="w-10 h-10 text-slate-200" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800">No Pending Approvals</h3>
+            <p className="text-slate-500 mt-1 max-w-sm">All internship posts have been reviewed. New posts from industry partners will appear here.</p>
           </div>
         ) : (
           filteredInternships.map((internship) => (
@@ -129,13 +127,13 @@ export default function InternshipApprovals() {
               </div>
 
               <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex gap-2">
-                <button 
+                <button
                   onClick={() => setSelectedInternship(internship)}
                   className="flex-1 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-50 transition-colors shadow-sm"
                 >
                   Review Details
                 </button>
-                <button 
+                <button
                   onClick={() => handleStatusUpdate(internship.id, 'Active')}
                   className="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-100"
                   title="Quick Approve"
@@ -166,7 +164,7 @@ export default function InternshipApprovals() {
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
-            
+
             <div className="p-8 max-h-[70vh] overflow-y-auto">
               <div className="mb-8">
                 <h3 className="text-2xl font-extrabold text-slate-800 mb-2">{selectedInternship.title}</h3>
@@ -199,29 +197,29 @@ export default function InternshipApprovals() {
                 </div>
 
                 <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-3 items-start">
-                   <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                   <p className="text-xs text-amber-700 font-medium">
-                     <b>Note:</b> Approving this post will make it visible to all students in your school. Industry partners can see if you've approved or rejected their posts.
-                   </p>
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 font-medium">
+                    <b>Note:</b> Approving this post will make it visible to all students in your school. Industry partners can see if you've approved or rejected their posts.
+                  </p>
                 </div>
               </div>
             </div>
 
             <div className="p-6 bg-slate-50 flex flex-col sm:flex-row justify-between gap-4 border-t border-slate-100">
-              <button 
+              <button
                 onClick={() => handleStatusUpdate(selectedInternship.id, 'Rejected')}
                 className="px-6 py-3 border-2 border-red-100 text-red-600 rounded-2xl font-bold hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
               >
                 <XCircle size={20} /> Reject Post
               </button>
               <div className="flex gap-3">
-                <button 
+                <button
                   onClick={() => setSelectedInternship(null)}
                   className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={() => handleStatusUpdate(selectedInternship.id, 'Active')}
                   className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-extrabold hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 flex items-center gap-2"
                 >

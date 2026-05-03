@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
   Image,
   Alert
 } from "react-native";
