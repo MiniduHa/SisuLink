@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, Users, GraduationCap, BookOpen, CalendarDays, 
   Bell, Settings, LogOut, Library, UserSquare, X, Upload, 
-  Phone, Mail, Globe, MapPin 
+  Phone, Mail, Globe, MapPin, Building2 
 } from 'lucide-react';
 
 // --- CUSTOM SVG BRAND LOGOS ---
@@ -172,6 +172,7 @@ export default function SchoolAdminLayout() {
     { name: 'Classes', path: '/school-admin/classes', icon: BookOpen },
     { name: 'Calendar', path: '/school-admin/calendar', icon: CalendarDays },
     { name: 'Notices', path: '/school-admin/notices', icon: Bell },
+    { name: 'Job Approvals', path: '/school-admin/internships', icon: Building2 },
   ];
 
   return (

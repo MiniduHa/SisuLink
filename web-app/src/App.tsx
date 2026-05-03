@@ -8,6 +8,7 @@ import SchoolRegistration from './pages/SchoolRegistration';
 import SuperAdminLayout from './pages/super-admin/SuperAdminLayout';
 import SuperAdminDashboard from './pages/super-admin/SuperAdminDashboard';
 import ManageSchools from './pages/super-admin/ManageSchools';
+import ManageIndustry from './pages/super-admin/ManageIndustry';
 import PlatformSettings from './pages/super-admin/PlatformSettings';
 
 // --- SCHOOL ADMIN IMPORTS ---
@@ -19,6 +20,7 @@ import ManageClasses from './pages/school-admin/ManageClasses';
 import ManageCalendar from './pages/school-admin/ManageCalendar';
 import ManageNotices from './pages/school-admin/ManageNotices';
 import ManageParents from './pages/school-admin/ManageParents';
+import InternshipApprovals from './pages/school-admin/InternshipApprovals';
 
 function App() {
   return (
@@ -34,6 +36,7 @@ function App() {
         <Route path="/super-admin" element={<SuperAdminLayout />}>
           <Route index element={<SuperAdminDashboard />} />
           <Route path="schools" element={<ManageSchools />} />
+          <Route path="industry" element={<ManageIndustry />} />
           <Route path="settings" element={<PlatformSettings />} />
         </Route>
 
@@ -46,6 +49,7 @@ function App() {
           <Route path="calendar" element={<ManageCalendar />} />
           <Route path="notices" element={<ManageNotices />} />
           <Route path="parents" element={<ManageParents />} />
+          <Route path="internships" element={<InternshipApprovals />} />
         </Route>
 
       </Routes>

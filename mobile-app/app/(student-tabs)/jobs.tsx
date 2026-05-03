@@ -25,94 +25,37 @@ export default function JobsScreen() {
   // --- MOCK DATA ---
   const industries = ["All", "IT/Software", "Design", "Marketing", "Business", "Engineering"];
 
-  const jobsData = [
-    {
-      id: "1",
-      title: "Software Engineering Intern",
-      company: "Dialog Axiata",
-      location: "Colombo, Western Province",
-      type: "Internship",
-      industry: "IT/Software",
-      logoColor: "#1E3A8A",
-      postedAt: "2 days ago",
-      description: "Join our core engineering team to build scalable telecommunication software solutions. You will be working with modern web technologies and cloud infrastructure.",
-      requirements: [
-        "Currently pursuing a degree in Computer Science or related field.",
-        "Basic knowledge of JavaScript, React, and Node.js.",
-        "Strong problem-solving skills and passion for learning."
-      ]
-    },
-    {
-      id: "2",
-      title: "Junior UI/UX Designer",
-      company: "WSO2",
-      location: "Remote",
-      type: "Part-Time",
-      industry: "Design",
-      logoColor: "#F97316",
-      postedAt: "1 week ago",
-      description: "We are looking for a creative Junior UI/UX Designer to create amazing user experiences for our enterprise integration products.",
-      requirements: [
-        "Portfolio demonstrating strong UI/UX design skills.",
-        "Proficiency in Figma or Adobe XD.",
-        "Understanding of user-centered design principles."
-      ]
-    },
-    {
-      id: "3",
-      title: "Digital Marketing Executive",
-      company: "MAS Holdings",
-      location: "Colombo 02",
-      type: "Full-Time",
-      industry: "Marketing",
-      logoColor: "#0F766E",
-      postedAt: "3 days ago",
-      description: "Drive our digital presence across global markets. You will handle social media campaigns, SEO optimization, and content marketing strategies.",
-      requirements: [
-        "Degree in Marketing, Business, or Communications.",
-        "Familiarity with Google Analytics and Facebook Ads.",
-        "Excellent written communication skills."
-      ]
-    },
-    {
-      id: "4",
-      title: "Data Analyst Intern",
-      company: "John Keells Holdings",
-      location: "Colombo 01",
-      type: "Internship",
-      industry: "IT/Software",
-      logoColor: "#4338CA",
-      postedAt: "5 hours ago",
-      description: "Help us make data-driven decisions. You will clean datasets, create visualizations in PowerBI, and present findings to management.",
-      requirements: [
-        "Strong mathematical and analytical skills.",
-        "Experience with SQL and Python (Pandas/NumPy).",
-        "Ability to translate data into actionable insights."
-      ]
-    },
-    {
-      id: "5",
-      title: "Business Development Associate",
-      company: "Hemas Holdings",
-      location: "Colombo 03",
-      type: "Full-Time",
-      industry: "Business",
-      logoColor: "#BE123C",
-      postedAt: "4 days ago",
-      description: "Identify new business opportunities and build relationships with key clients in the healthcare and consumer goods sectors.",
-      requirements: [
-        "Strong negotiation and interpersonal skills.",
-        "Ability to analyze market trends and competitor strategies.",
-        "Willingness to travel for client meetings."
-      ]
+  const [jobsData, setJobsData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  React.useEffect(() => {
+    fetchJobs();
+  }, []);
+
+  const fetchJobs = async () => {
+    try {
+      const response = await fetch("http://172.20.10.7:5000/api/student/jobs");
+      if (response.ok) {
+        const data = await response.json();
+        setJobsData(data.map((job: any) => ({
+          ...job,
+          industry: job.industry_type || "General", // Mapping backend field if different
+          logoColor: job.bg_color || "#3B82F6",
+          postedAt: "Recently" // Simplifying for now
+        })));
+      }
+    } catch (error) {
+      console.error("Failed to fetch jobs:", error);
+    } finally {
+      setIsLoading(false);
     }
-  ];
+  };
 
   // --- FILTERING LOGIC ---
   const filteredJobs = jobsData.filter(job => {
     const matchesIndustry = selectedIndustry === "All" || job.industry === selectedIndustry;
     const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          job.company.toLowerCase().includes(searchQuery.toLowerCase());
+                          job.company_name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesIndustry && matchesSearch;
   });
 
@@ -197,11 +140,11 @@ export default function JobsScreen() {
               >
                 <View style={styles.jobCardHeader}>
                   <View style={[styles.companyLogo, { backgroundColor: job.logoColor }]}>
-                    <Text style={styles.companyLogoText}>{job.company.charAt(0)}</Text>
+                    <Text style={styles.companyLogoText}>{job.company_name.charAt(0)}</Text>
                   </View>
                   <View style={styles.jobCardInfo}>
                     <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
-                    <Text style={styles.jobCompany}>{job.company}</Text>
+                    <Text style={styles.jobCompany}>{job.company_name}</Text>
                   </View>
                   <TouchableOpacity style={styles.bookmarkBtn}>
                     <Feather name="bookmark" size={18} color="#94A3B8" />
@@ -255,10 +198,10 @@ export default function JobsScreen() {
             {/* Job Header Info */}
             <View style={styles.modalJobHeader}>
               <View style={[styles.modalCompanyLogo, { backgroundColor: selectedJob?.logoColor || '#3B82F6' }]}>
-                <Text style={styles.modalCompanyLogoText}>{selectedJob?.company?.charAt(0)}</Text>
+                <Text style={styles.modalCompanyLogoText}>{selectedJob?.company_name?.charAt(0)}</Text>
               </View>
               <Text style={styles.modalJobTitle}>{selectedJob?.title}</Text>
-              <Text style={styles.modalJobCompany}>{selectedJob?.company}</Text>
+              <Text style={styles.modalJobCompany}>{selectedJob?.company_name}</Text>
               
               <View style={styles.modalTagsRow}>
                 <View style={styles.modalTag}>
@@ -283,7 +226,9 @@ export default function JobsScreen() {
             {/* Requirements */}
             <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Requirements</Text>
             <View style={styles.requirementsList}>
-              {selectedJob?.requirements.map((req: string, index: number) => (
+              {typeof selectedJob?.requirements === 'string' ? (
+                <Text style={styles.bodyText}>{selectedJob.requirements}</Text>
+              ) : selectedJob?.requirements?.map((req: string, index: number) => (
                 <View key={index} style={styles.requirementBullet}>
                   <View style={styles.bulletDot} />
                   <Text style={styles.bodyText}>{req}</Text>
@@ -293,7 +238,7 @@ export default function JobsScreen() {
 
             {/* Company Info Placeholder */}
             <View style={styles.aboutCompanyCard}>
-              <Text style={styles.aboutCompanyTitle}>About {selectedJob?.company}</Text>
+              <Text style={styles.aboutCompanyTitle}>About {selectedJob?.company_name}</Text>
               <Text style={styles.aboutCompanyText}>
                 We are an industry leader committed to innovation and nurturing young talent. Join us to build your career and make a global impact.
               </Text>

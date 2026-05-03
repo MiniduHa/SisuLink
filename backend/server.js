@@ -99,8 +99,138 @@ app.get('/api/school-admin/:email/parents', schoolAdminController.getParents);
 app.post('/api/school-admin/:email/parents', schoolAdminController.addParent);
 app.put('/api/school-admin/:email/parents/:parentId', schoolAdminController.updateParent);
 app.delete('/api/school-admin/:email/parents/:parentId', schoolAdminController.deleteParent);
+
+// 13. Industry Management (Admin)
+app.get('/api/school-admin/:email/industry', schoolAdminController.getIndustryPartners);
+app.put('/api/school-admin/:email/industry/:partnerId', schoolAdminController.updateIndustryPartner);
+
 app.get('/api/school-admin/:email/analytics/academic-trends', schoolAdminController.getAcademicTrends);
 app.get('/api/school-admin/:email/analytics/attendance-health', schoolAdminController.getAttendanceHealth);
+
+// 15. Super Admin Industry Management
+app.get('/api/superadmin/industry', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM industry_partners ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch industry partners." }); }
+});
+
+app.put('/api/superadmin/industry/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const result = await db.query('UPDATE industry_partners SET status = $1 WHERE id = $2 RETURNING *', [status, id]);
+    
+    if (result.rows.length > 0 && status === 'Active') {
+      const partner = result.rows[0];
+      // Send approval email
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+      });
+
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: partner.email,
+        subject: 'SisuLink - Industry Partner Account Approved!',
+        html: `
+          <div style="font-family: sans-serif; padding: 20px;">
+            <h2 style="color: #2563EB;">Congratulations, ${partner.company_name}!</h2>
+            <p>Your Industry Partner account on <b>SisuLink</b> has been approved by the Super Admin.</p>
+            <p>You can now log in to the mobile app and start posting internship opportunities for students.</p>
+            <p>Note: All posted jobs will require final approval from the respective school administration before becoming visible to students.</p>
+            <br/>
+            <p>Best Regards,<br/>SisuLink Team</p>
+          </div>
+        `
+      };
+      
+      transporter.sendMail(mailOptions, (error) => {
+        if (error) console.error("Email sending failed:", error);
+      });
+    }
+
+    res.json({ message: `Status updated to ${status}`, partner: result.rows[0] });
+  } catch (error) { res.status(500).json({ error: "Failed to update status." }); }
+});
+
+// 16. School Admin Internship Approval
+app.get('/api/school-admin/:email/internships/pending', async (req, res) => {
+  try {
+    // For now, let's show all pending internships. 
+    // In a more complex system, we might filter by linked schools.
+    const result = await db.query("SELECT * FROM internships WHERE status = 'Pending' ORDER BY created_at DESC");
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch pending internships." }); }
+});
+
+app.put('/api/school-admin/internships/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'Active' or 'Rejected'
+    const result = await db.query('UPDATE internships SET status = $1 WHERE id = $2 RETURNING *', [status, id]);
+    res.json({ message: `Internship post ${status}`, internship: result.rows[0] });
+  } catch (error) { res.status(500).json({ error: "Failed to update internship status." }); }
+});
+
+// 17. Student Internship View
+app.get('/api/student/jobs', async (req, res) => {
+  try {
+    const result = await db.query("SELECT * FROM internships WHERE status = 'Active' ORDER BY created_at DESC");
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch jobs." }); }
+});
+
+// 17. Industry Partner Dashboard & Job Management
+app.get('/api/industry/:email/dashboard', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const partner = await db.query('SELECT * FROM industry_partners WHERE email = $1', [email.toLowerCase().trim()]);
+    if (partner.rows.length === 0) return res.status(404).json({ error: "Partner not found" });
+
+    const partnerId = partner.rows[0].id;
+    const jobs = await db.query('SELECT * FROM internships WHERE industry_id = $1 ORDER BY created_at DESC', [partnerId]);
+    
+    res.json({
+      partner: partner.rows[0],
+      stats: {
+        activeJobs: jobs.rows.filter(j => j.status === 'Active').length,
+        totalJobs: jobs.rows.length,
+        applicants: 0 
+      },
+      jobs: jobs.rows
+    });
+  } catch (error) { res.status(500).json({ error: "Failed to fetch industry dashboard." }); }
+});
+
+app.post('/api/industry/:email/jobs', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { title, description, requirements, location, employment_type } = req.body;
+    
+    const partner = await db.query('SELECT id, company_name FROM industry_partners WHERE email = $1', [email.toLowerCase().trim()]);
+    if (partner.rows.length === 0) return res.status(404).json({ error: "Partner not found" });
+
+    const result = await db.query(
+      `INSERT INTO internships (industry_id, company_name, title, description, requirements, location, employment_type) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [partner.rows[0].id, partner.rows[0].company_name, title, description, requirements, location, employment_type]
+    );
+
+    res.status(201).json({ message: "Job posted successfully!", job: result.rows[0] });
+  } catch (error) { res.status(500).json({ error: "Failed to post job." }); }
+});
+
+app.get('/api/industry/:email/jobs', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const partner = await db.query('SELECT id FROM industry_partners WHERE email = $1', [email.toLowerCase().trim()]);
+    if (partner.rows.length === 0) return res.status(404).json({ error: "Partner not found" });
+
+    const result = await db.query('SELECT * FROM internships WHERE industry_id = $1 ORDER BY created_at DESC', [partner.rows[0].id]);
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch jobs." }); }
+});
 
 
 // --- AUTHENTICATION ROUTES ---
@@ -108,6 +238,22 @@ app.get('/api/school-admin/:email/analytics/attendance-health', schoolAdminContr
 // Initialize Database Tables if they don't exist
 const initDB = async () => {
   try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS schools (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        admin_name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        phone VARCHAR(50),
+        school_category VARCHAR(100),
+        student_type VARCHAR(100),
+        password VARCHAR(255) NOT NULL,
+        status VARCHAR(50) DEFAULT 'Pending',
+        student_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await db.query(`
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
@@ -156,6 +302,37 @@ const initDB = async () => {
         UNIQUE(student_id, date) 
       )
     `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS industry_partners (
+        id SERIAL PRIMARY KEY,
+        company_name VARCHAR(255) NOT NULL,
+        brn VARCHAR(100) UNIQUE NOT NULL,
+        industry_type VARCHAR(100),
+        email VARCHAR(255) UNIQUE NOT NULL,
+        phone VARCHAR(50),
+        password VARCHAR(255) NOT NULL,
+        status VARCHAR(50) DEFAULT 'Pending',
+        logo_url TEXT,
+        school_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS internships (
+        id SERIAL PRIMARY KEY,
+        industry_id INTEGER REFERENCES industry_partners(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        requirements TEXT,
+        location VARCHAR(255),
+        employment_type VARCHAR(100),
+        status VARCHAR(50) DEFAULT 'Pending',
+        bg_color VARCHAR(20) DEFAULT '#DBEAFE',
+        company_name VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
     console.log("✅ Database tables checked/initialized.");
   } catch (err) {
@@ -189,6 +366,9 @@ app.post('/api/auth/login', async (req, res) => {
     } else if (role === 'Student') {
       const result = await db.query('SELECT * FROM students WHERE email = $1', [cleanEmail]);
       if (result.rows.length > 0) { user = result.rows[0]; assignedRole = 'Student'; }
+    } else if (role === 'Industry') {
+      const result = await db.query('SELECT * FROM industry_partners WHERE email = $1', [cleanEmail]);
+      if (result.rows.length > 0) { user = result.rows[0]; assignedRole = 'Industry'; }
     } else {
       // Fallback for legacy calls or multi-role discovery
       let result = await db.query('SELECT * FROM super_admins WHERE email = $1', [cleanEmail]);
@@ -213,6 +393,11 @@ app.post('/api/auth/login', async (req, res) => {
         result = await db.query('SELECT * FROM students WHERE email = $1', [cleanEmail]);
         if (result.rows.length > 0) { user = result.rows[0]; assignedRole = 'Student'; }
       }
+
+      if (!user) {
+        result = await db.query('SELECT * FROM industry_partners WHERE email = $1', [cleanEmail]);
+        if (result.rows.length > 0) { user = result.rows[0]; assignedRole = 'Industry'; }
+      }
     }
 
     if (!user) return res.status(400).json({ error: `No ${role || 'user'} account found with this email.` });
@@ -232,6 +417,8 @@ app.post('/api/auth/login', async (req, res) => {
       res.json({ message: "Login successful!", user: { id: user.id, full_name: user.full_name, email: user.email, role: 'Parent', child_student_ids: user.child_student_ids }});
     } else if (assignedRole === 'Teacher') {
       res.json({ message: "Login successful!", user: { id: user.id, full_name: user.full_name, email: user.email, role: 'Teacher', staff_id: user.staff_id, profile_photo_url: user.profile_photo_url }});
+    } else if (assignedRole === 'Industry') {
+      res.json({ message: "Login successful!", user: { id: user.id, company_name: user.company_name, email: user.email, role: 'Industry', logo_url: user.logo_url, status: user.status }});
     } else {
       res.json({ message: "Login successful!", student: { first_name: user.first_name, last_name: user.last_name, email: user.email, role: 'Student', grade_level: user.grade_level, studentId: user.index_number, profile_photo: user.profile_photo_url }});
     }
@@ -300,6 +487,14 @@ app.post('/api/auth/register', async (req, res) => {
         [full_name, email, phone_number, hashedPassword, staff_id, department, medium, school_name.trim(), school_id, subject, is_class_teacher || false]
       );
       return res.status(201).json({ message: "Teacher registered successfully!", user: result.rows[0] });
+
+    } else if (role === 'Industry') {
+      const { company_name, brn, industry_type, phone_number } = req.body;
+      const result = await db.query(
+        `INSERT INTO industry_partners (company_name, brn, industry_type, email, phone, password) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, company_name, email`,
+        [company_name, brn, industry_type, email, phone_number, hashedPassword]
+      );
+      return res.status(201).json({ message: "Industry partner registered successfully!", user: result.rows[0] });
 
     } else {
       return res.status(400).json({ error: "Invalid role selected." });

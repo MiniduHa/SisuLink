@@ -13,6 +13,7 @@ export default function SuperAdminLayout() {
   const navItems = [
     { name: 'Dashboard', path: '/super-admin', icon: LayoutDashboard },
     { name: 'Manage Schools', path: '/super-admin/schools', icon: Building2 },
+    { name: 'Manage Industry', path: '/super-admin/industry', icon: Building2 },
     { name: 'Platform Settings', path: '/super-admin/settings', icon: Settings },
   ];
 

@@ -12,7 +12,7 @@ exports.getSchoolDashboardStats = async (req, res) => {
     const schoolName = schoolResult.rows[0].name;
     const schoolId = schoolResult.rows[0].id;
 
-    let totalTeachers = 0, totalStudents = 0, totalParents = 0;
+    let totalTeachers = 0, totalStudents = 0, totalParents = 0, totalIndustry = 0;
     try {
       const teacherCount = await db.query('SELECT COUNT(*) FROM teachers WHERE school_id = $1', [schoolId]);
       totalTeachers = parseInt(teacherCount.rows[0].count, 10);
@@ -20,14 +20,32 @@ exports.getSchoolDashboardStats = async (req, res) => {
       totalStudents = parseInt(studentCount.rows[0].count, 10);
       const parentCount = await db.query('SELECT COUNT(*) FROM parents WHERE school_id = $1', [schoolId]);
       totalParents = parseInt(parentCount.rows[0].count, 10);
-    } catch (e) { console.error("Query error", e); }
+      const industryCount = await db.query('SELECT COUNT(*) FROM industry_partners');
+      totalIndustry = parseInt(industryCount.rows[0].count, 10);
+      
+      const pendingJobsCount = await db.query("SELECT COUNT(*) FROM internships WHERE status = 'Pending'");
+      const totalPendingJobs = parseInt(pendingJobsCount.rows[0].count, 10);
 
-    res.json({
-      overallStats: { students: totalStudents, teachers: totalTeachers, parents: totalParents, classes: Math.floor(totalStudents / 30) || 0 },
-      dailyStats: { studentAttendance: { present: 0, total: totalStudents, percentage: 0 }, teacherAttendance: { present: 0, total: totalTeachers, percentage: 0 }, staffLeave: { approved: 0, pending: 0 }, eventsToday: { count: 0, nextEvent: "No events scheduled" } },
-      notices: [], events: []   
-    });
-  } catch (error) { res.status(500).json({ error: "Server error fetching dashboard data." }); }
+      res.json({
+        overallStats: { students: totalStudents, teachers: totalTeachers, parents: totalParents, industry: totalIndustry, classes: Math.floor(totalStudents / 30) || 0 },
+        dailyStats: { 
+          studentAttendance: { present: 0, total: totalStudents, percentage: 0 }, 
+          teacherAttendance: { present: 0, total: totalTeachers, percentage: 0 }, 
+          staffLeave: { approved: 0, pending: 0 }, 
+          eventsToday: { count: 0, nextEvent: "No events scheduled" },
+          pendingInternships: totalPendingJobs
+        },
+        industryPartners: totalIndustry,
+        notices: [], events: []   
+      });
+    } catch (e) { 
+      console.error("Query error", e); 
+      res.status(500).json({ error: "Database query error" });
+    }
+  } catch (error) { 
+    console.error("Dashboard Stats Error:", error);
+    res.status(500).json({ error: "Server error fetching dashboard data." }); 
+  }
 };
 
 // 2. Get Teachers
@@ -646,4 +664,39 @@ exports.getAttendanceHealth = async (req, res) => {
     console.error("Get Attendance Health Error:", error.message);
     res.status(500).json({ error: "Failed to fetch attendance health data." });
   }
-};
+};
+
+// 30. Get Industry Partners
+exports.getIndustryPartners = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const result = await db.query('SELECT * FROM industry_partners ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get Industry Partners Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch industry partners." });
+  }
+};
+
+// 31. Update Industry Partner Status
+exports.updateIndustryPartner = async (req, res) => {
+  try {
+    const { partnerId } = req.params;
+    const { status } = req.body;
+    
+    const result = await db.query(
+      'UPDATE industry_partners SET status = $1 WHERE id = $2 RETURNING *',
+      [status, partnerId]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "Partner not found." });
+    res.json({ message: "Partner status updated successfully!", partner: result.rows[0] });
+  } catch (error) {
+    console.error("Update Industry Partner Error:", error.message);
+    res.status(500).json({ error: "Failed to update industry partner." });
+  }
+};
+

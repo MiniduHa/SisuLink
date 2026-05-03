@@ -138,7 +138,7 @@ export default function SignupScreen() {
           setSchoolList(data.map((s: any) => s.name));
         }
       } catch (error) {
-        console.error("Failed to fetch schools from API");
+        console.warn("⚠️ School list fetch failed. This only affects Student/Teacher registration.");
       }
     };
     fetchSchools();
@@ -213,8 +213,13 @@ export default function SignupScreen() {
         payload.department = department;
         payload.subject = subject; 
         payload.medium = medium;
-        payload.is_class_teacher = isClassTeacher; // NEW: Sent to backend
+        payload.is_class_teacher = isClassTeacher;
         payload.school_name = school; 
+      } else if (role === "Industry") {
+        payload.company_name = companyName;
+        payload.brn = brn;
+        payload.industry_type = industryType;
+        payload.phone_number = phone;
       }
       
       const response = await fetch(API_URL, {

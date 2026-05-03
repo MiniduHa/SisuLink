@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, GraduationCap, BookOpen, Calendar as CalendarIcon, Megaphone, ChevronRight, ClipboardCheck, UserMinus, Clock, UserCheck, X, BarChart3, Inbox, TrendingUp, Activity } from 'lucide-react';
+import { Users, GraduationCap, BookOpen, Calendar as CalendarIcon, Megaphone, ChevronRight, ClipboardCheck, UserMinus, Clock, UserCheck, X, BarChart3, Inbox, TrendingUp, Activity, Building2 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function SchoolAdminDashboard() {
@@ -11,12 +11,13 @@ export default function SchoolAdminDashboard() {
 
   // Master State for all Dashboard Data
   const [dashboardData, setDashboardData] = useState({
-    overallStats: { students: 0, teachers: 0, parents: 0, classes: 0 },
+    overallStats: { students: 0, teachers: 0, parents: 0, industry: 0, classes: 0 },
     dailyStats: {
       studentAttendance: { present: 0, total: 0, percentage: 0 },
       teacherAttendance: { present: 0, total: 0, percentage: 0 },
       staffLeave: { approved: 0, pending: 0 },
-      eventsToday: { count: 0, nextEvent: "No events scheduled" }
+      eventsToday: { count: 0, nextEvent: "No events scheduled" },
+      pendingInternships: 0
     },
     notices: [] as any[],
     events: [] as any[]
@@ -50,8 +51,8 @@ export default function SchoolAdminDashboard() {
 
       // Fetch attendance health data
       const attendanceResponse = await fetch(`http://localhost:5000/api/school-admin/${email}/analytics/attendance-health`);
-      const attendanceResult = await attendanceResponse.ok ? await attendanceResponse.json() : [];
       if (attendanceResponse.ok) {
+        const attendanceResult = await attendanceResponse.json();
         setAttendanceData(attendanceResult);
       }
     } catch (error) {
@@ -83,6 +84,11 @@ export default function SchoolAdminDashboard() {
       icon: BookOpen, color: "bg-amber-500", breakdownTitle: "Classrooms Overview",
       breakdown: [ { label: "Estimated from student count", count: dashboardData.overallStats.classes, percentage: 100 } ]
     },
+    { 
+      id: 'industry', title: "Industry Partners", value: dashboardData.overallStats.industry.toLocaleString(), 
+      icon: Building2, color: "bg-indigo-500", breakdownTitle: "Industry Collaborations",
+      breakdown: [ { label: "Registered companies", count: dashboardData.overallStats.industry, percentage: 100 } ]
+    },
   ];
 
   const dynamicDailyStats = [
@@ -97,6 +103,12 @@ export default function SchoolAdminDashboard() {
       subtext: `${dashboardData.dailyStats.teacherAttendance.present} / ${dashboardData.dailyStats.teacherAttendance.total} Present`, 
       icon: Users, color: "bg-teal-500", breakdownTitle: "Today's Staff Attendance",
       breakdown: [ { label: "Module pending implementation", count: "0", percentage: 0 } ]
+    },
+    { 
+      id: 'pending_internships', title: "Job Approvals", value: dashboardData.dailyStats.pendingInternships.toString(), 
+      subtext: "Pending Industry Posts", 
+      icon: Building2, color: "bg-orange-500", breakdownTitle: "Internship Approvals",
+      breakdown: [ { label: "Waiting for review", count: dashboardData.dailyStats.pendingInternships, percentage: 100 } ]
     },
     { 
       id: 'staff_leave', title: "Staff on Leave", value: dashboardData.dailyStats.staffLeave.approved.toString(), 
@@ -139,7 +151,7 @@ export default function SchoolAdminDashboard() {
       {/* --- GRID 1: OVERALL STATISTICS --- */}
       <div>
         <h2 className="text-lg font-bold text-slate-800 mb-4 px-1">Platform Statistics</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           {dynamicOverallStats.map((stat, index) => {
             const Icon = stat.icon;
             return (
@@ -394,19 +406,21 @@ export default function SchoolAdminDashboard() {
       </div>
 
       {/* --- ADVANCED BREAKDOWN MODAL --- */}
-      {selectedStatBreakdown && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-slate-50 border-b border-slate-100 p-5 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className={`${selectedStatBreakdown.color} w-10 h-10 rounded-lg flex items-center justify-center text-white shadow-sm`}>
-                  <selectedStatBreakdown.icon size={20} />
+      {selectedStatBreakdown && (() => {
+        const Icon = selectedStatBreakdown.icon;
+        return (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="bg-slate-50 border-b border-slate-100 p-5 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className={`${selectedStatBreakdown.color} w-10 h-10 rounded-lg flex items-center justify-center text-white shadow-sm`}>
+                    <Icon size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800">{selectedStatBreakdown.title} Breakdown</h2>
+                    <p className="text-xs text-slate-500 font-medium">Metric Value: {selectedStatBreakdown.value}</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-800">{selectedStatBreakdown.title} Breakdown</h2>
-                  <p className="text-xs text-slate-500 font-medium">Metric Value: {selectedStatBreakdown.value}</p>
-                </div>
-              </div>
               <button onClick={() => setSelectedStatBreakdown(null)} className="text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-colors">
                 <X size={18} />
               </button>
@@ -435,7 +449,8 @@ export default function SchoolAdminDashboard() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
     </div>
   );
