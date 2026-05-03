@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router"; 
+import WatermarkOverlay from "../../components/WatermarkOverlay";
 
 const { width } = Dimensions.get("window");
 
@@ -187,6 +188,8 @@ export default function StudentMessagesScreen() {
   if (activeChat) {
     return (
       <SafeAreaView style={styles.safeArea}>
+        <WatermarkOverlay />
+
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <View style={styles.chatHeader}>
             <TouchableOpacity onPress={handleCloseChat} style={styles.backBtn}>
@@ -244,6 +247,8 @@ export default function StudentMessagesScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <WatermarkOverlay />
+
       <View style={{ flex: 1 }}>
         <View style={styles.inboxHeader}>
           <Text style={styles.headerTitle}>Messages</Text>

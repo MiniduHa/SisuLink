@@ -14,6 +14,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, MaterialIcons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
+import WatermarkOverlay from "../../components/WatermarkOverlay";
+
 import * as ImagePicker from "expo-image-picker";
 
 export default function TeacherProfileScreen() {
@@ -185,6 +187,8 @@ export default function TeacherProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <WatermarkOverlay />
+
       <View style={{ flex: 1 }}>
         
         {/* HEADER */}

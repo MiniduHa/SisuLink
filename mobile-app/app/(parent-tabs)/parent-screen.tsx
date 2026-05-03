@@ -13,6 +13,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"; 
 import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import WatermarkOverlay from "../../components/WatermarkOverlay";
+
 
 const { width } = Dimensions.get("window");
 
@@ -105,6 +107,8 @@ export default function ParentDashboard() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <WatermarkOverlay />
+
       <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           

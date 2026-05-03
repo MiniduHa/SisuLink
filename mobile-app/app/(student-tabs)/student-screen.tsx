@@ -13,6 +13,8 @@ import {
   ActivityIndicator
 } from "react-native";
 import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
+import WatermarkOverlay from "../../components/WatermarkOverlay";
+
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 
 const { width } = Dimensions.get("window");
@@ -157,7 +159,9 @@ export default function StudentScreen() {
 
   return (
     <View style={styles.container}>
+      <WatermarkOverlay />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
         
         <View style={styles.header}>
           <View style={styles.userInfo}>

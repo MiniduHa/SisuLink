@@ -601,3 +601,49 @@ exports.getAcademicTrends = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch academic trends." });
   }
 };
+
+// 29. Attendance Health Analysis
+exports.getAttendanceHealth = async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    // Find school ID from admin email
+    const schoolResult = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
+    if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
+    const schoolId = schoolResult.rows[0].id;
+
+    // Calculate attendance percentage grouped by grade level
+    const result = await db.query(
+      `SELECT 
+        s.grade_level as grade,
+        ROUND((COUNT(CASE WHEN sa.status = 'Present' THEN 1 END) * 100.0) / NULLIF(COUNT(sa.id), 0), 2) as attendance
+       FROM students s
+       JOIN student_attendance sa ON s.id = sa.student_id
+       WHERE s.school_id = $1
+       GROUP BY s.grade_level
+       ORDER BY 
+         CASE 
+           WHEN s.grade_level ILIKE 'Grade 1' THEN 1
+           WHEN s.grade_level ILIKE 'Grade 2' THEN 2
+           WHEN s.grade_level ILIKE 'Grade 3' THEN 3
+           WHEN s.grade_level ILIKE 'Grade 4' THEN 4
+           WHEN s.grade_level ILIKE 'Grade 5' THEN 5
+           WHEN s.grade_level ILIKE 'Grade 6' THEN 6
+           WHEN s.grade_level ILIKE 'Grade 7' THEN 7
+           WHEN s.grade_level ILIKE 'Grade 8' THEN 8
+           WHEN s.grade_level ILIKE 'Grade 9' THEN 9
+           WHEN s.grade_level ILIKE 'Grade 10' THEN 10
+           WHEN s.grade_level ILIKE 'Grade 11' THEN 11
+           WHEN s.grade_level ILIKE 'Grade 12' THEN 12
+           WHEN s.grade_level ILIKE 'Grade 13' THEN 13
+           ELSE 14
+         END`,
+      [schoolId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get Attendance Health Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch attendance health data." });
+  }
+};

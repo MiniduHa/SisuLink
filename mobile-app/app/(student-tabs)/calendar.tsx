@@ -12,6 +12,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather } from "@expo/vector-icons";
 import { useRouter, Stack, useGlobalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import WatermarkOverlay from "../../components/WatermarkOverlay";
+
 
 const { width } = Dimensions.get("window");
 
@@ -109,7 +111,9 @@ export default function SchoolCalendarScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <WatermarkOverlay />
       <Stack.Screen options={{ headerShown: false }} />
+
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>

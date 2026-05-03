@@ -12,6 +12,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, Ionicons } from "@expo/vector-icons";
+import WatermarkOverlay from "../../components/WatermarkOverlay";
+
 
 export default function JobsScreen() {
   // --- STATES ---
@@ -131,6 +133,8 @@ export default function JobsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <WatermarkOverlay />
+
       
       {/* HEADER */}
       <View style={styles.header}>

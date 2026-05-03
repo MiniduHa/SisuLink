@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Users, GraduationCap, BookOpen, Calendar as CalendarIcon, Megaphone, ChevronRight, ClipboardCheck, UserMinus, Clock, UserCheck, X, BarChart3, Inbox, TrendingUp } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Users, GraduationCap, BookOpen, Calendar as CalendarIcon, Megaphone, ChevronRight, ClipboardCheck, UserMinus, Clock, UserCheck, X, BarChart3, Inbox, TrendingUp, Activity } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function SchoolAdminDashboard() {
   const [selectedStatBreakdown, setSelectedStatBreakdown] = useState<any | null>(null);
   const [adminData, setAdminData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [trendData, setTrendData] = useState<any[]>([]);
+  const [attendanceData, setAttendanceData] = useState<any[]>([]);
 
   // Master State for all Dashboard Data
   const [dashboardData, setDashboardData] = useState({
@@ -45,6 +46,13 @@ export default function SchoolAdminDashboard() {
       const trendResult = await trendResponse.json();
       if (trendResponse.ok) {
         setTrendData(trendResult);
+      }
+
+      // Fetch attendance health data
+      const attendanceResponse = await fetch(`http://localhost:5000/api/school-admin/${email}/analytics/attendance-health`);
+      const attendanceResult = await attendanceResponse.ok ? await attendanceResponse.json() : [];
+      if (attendanceResponse.ok) {
+        setAttendanceData(attendanceResult);
       }
     } catch (error) {
       console.error("Failed to fetch dashboard stats", error);
@@ -189,78 +197,141 @@ export default function SchoolAdminDashboard() {
         </div>
       </div>
 
-      {/* --- ACADEMIC TREND ANALYSIS CHART --- */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-100 p-2 rounded-xl text-blue-600">
-              <TrendingUp size={22} />
+      {/* --- ANALYTICS SECTION: SIDE BY SIDE CHARTS --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* ACADEMIC TREND ANALYSIS CHART */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-100 p-2 rounded-xl text-blue-600">
+                <TrendingUp size={22} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">Academic Trend Analysis</h2>
+                <p className="text-sm text-slate-500 font-medium">Student performance by level</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Academic Trend Analysis</h2>
-              <p className="text-sm text-slate-500 font-medium">Average student performance across terms by level</p>
+            <div className="flex items-center gap-4 text-xs font-bold">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                <span className="text-slate-600">O/L</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                <span className="text-slate-600">A/L</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-sm font-bold">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-              <span className="text-slate-600">O/L Students</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-              <span className="text-slate-600">A/L Students</span>
-            </div>
+
+          <div className="h-[300px] w-full mt-auto">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={trendData}
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="term" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                  dy={10}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                  domain={[0, 100]}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    borderRadius: '12px', 
+                    border: 'none', 
+                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                    padding: '12px'
+                  }}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="OL" 
+                  stroke="#3b82f6" 
+                  strokeWidth={3} 
+                  dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="AL" 
+                  stroke="#10b981" 
+                  strokeWidth={3} 
+                  dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="h-[350px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={trendData}
-              margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis 
-                dataKey="term" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }}
-                dy={10}
-              />
-              <YAxis 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }}
-                domain={[0, 100]}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  borderRadius: '12px', 
-                  border: 'none', 
-                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                  padding: '12px'
-                }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="OL" 
-                stroke="#3b82f6" 
-                strokeWidth={4} 
-                dot={{ r: 6, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }}
-                activeDot={{ r: 8, strokeWidth: 0 }}
-                animationDuration={1500}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="AL" 
-                stroke="#10b981" 
-                strokeWidth={4} 
-                dot={{ r: 6, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }}
-                activeDot={{ r: 8, strokeWidth: 0 }}
-                animationDuration={1500}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+        {/* ATTENDANCE HEALTH BAR CHART */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="bg-teal-100 p-2 rounded-xl text-teal-600">
+                <Activity size={22} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">Attendance Health</h2>
+                <p className="text-sm text-slate-500 font-medium">Overall attendance percentage by grade</p>
+              </div>
+            </div>
+            <div className="bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Target: 95%+</span>
+            </div>
+          </div>
+
+          <div className="h-[300px] w-full mt-auto">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={attendanceData}
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="grade" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                  dy={10}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                  domain={[0, 100]}
+                />
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }}
+                  contentStyle={{ 
+                    borderRadius: '12px', 
+                    border: 'none', 
+                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                    padding: '12px'
+                  }}
+                />
+                <Bar 
+                  dataKey="attendance" 
+                  radius={[6, 6, 0, 0]} 
+                  barSize={32}
+                  animationDuration={1500}
+                >
+                  {attendanceData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.attendance >= 90 ? '#14b8a6' : entry.attendance >= 75 ? '#0d9488' : '#0f766e'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

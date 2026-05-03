@@ -100,6 +100,7 @@ app.post('/api/school-admin/:email/parents', schoolAdminController.addParent);
 app.put('/api/school-admin/:email/parents/:parentId', schoolAdminController.updateParent);
 app.delete('/api/school-admin/:email/parents/:parentId', schoolAdminController.deleteParent);
 app.get('/api/school-admin/:email/analytics/academic-trends', schoolAdminController.getAcademicTrends);
+app.get('/api/school-admin/:email/analytics/attendance-health', schoolAdminController.getAttendanceHealth);
 
 
 // --- AUTHENTICATION ROUTES ---
@@ -143,6 +144,18 @@ const initDB = async () => {
     await db.query("ALTER TABLE student_grades ADD COLUMN IF NOT EXISTS marks NUMERIC(5, 2)");
     await db.query("ALTER TABLE student_grades ADD COLUMN IF NOT EXISTS level VARCHAR(10)");
     await db.query("ALTER TABLE student_grades ADD COLUMN IF NOT EXISTS remarks TEXT");
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS student_attendance (
+        id SERIAL PRIMARY KEY,
+        school_id VARCHAR(50) REFERENCES schools(id) ON DELETE CASCADE,
+        student_id UUID REFERENCES students(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        status VARCHAR(50) NOT NULL, 
+        marked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(student_id, date) 
+      )
+    `);
 
     console.log("✅ Database tables checked/initialized.");
   } catch (err) {

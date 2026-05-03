@@ -11,6 +11,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
+import WatermarkOverlay from "../../components/WatermarkOverlay";
+
 
 export default function GradesScreen() {
   const router = useRouter();
@@ -83,6 +85,8 @@ export default function GradesScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <WatermarkOverlay />
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
