@@ -45,7 +45,8 @@ export default function StudentScreen() {
     attendanceStats: { percentage: "0%", status: "Loading...", message: "", present: 0, absent: 0 },
     specialEvents: [],
     urgentNoticeData: [],
-    allNotices: []
+    allNotices: [],
+    industryAnnouncements: []
   });
   const [allMaterials, setAllMaterials] = useState<any[]>([]);
 
@@ -330,6 +331,31 @@ export default function StudentScreen() {
             </View>
           </View>
         ))}
+
+        {/* INDUSTRY ANNOUNCEMENTS SECTION */}
+        <View style={[styles.sectionHeader, { marginTop: 10 }]}>
+          <Text style={styles.sectionTitle}>Industry Announcements</Text>
+        </View>
+
+        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.newsCarouselScroll}>
+          {dashboardData.industryAnnouncements && dashboardData.industryAnnouncements.length > 0 ? (
+            dashboardData.industryAnnouncements.map((ann: any) => (
+              <TouchableOpacity key={ann.id} style={styles.newsCard} activeOpacity={0.9}>
+                <ImageBackground source={{ uri: ann.cover_photo || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=500&q=80" }} style={styles.newsImage} imageStyle={{ borderRadius: 16 }}>
+                  <View style={styles.newsOverlay}>
+                    <Text style={styles.newsDate}>{new Date(ann.created_at).toLocaleDateString()}</Text>
+                    <Text style={styles.newsTitle} numberOfLines={2}>{ann.title}</Text>
+                    <Text style={{color: '#E2E8F0', fontSize: 12, marginTop: 4}}>{ann.company_name} • {ann.type}</Text>
+                  </View>
+                </ImageBackground>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={[styles.newsCard, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1F5F9' }]}>
+               <Text style={{ color: '#64748B', fontStyle: 'italic' }}>No industry announcements.</Text>
+            </View>
+          )}
+        </ScrollView>
 
         <View style={[styles.sectionHeader, { marginTop: 10 }]}>
           <Text style={styles.sectionTitle}>Recommended Internships</Text>

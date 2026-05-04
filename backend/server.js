@@ -173,6 +173,34 @@ app.put('/api/school-admin/internships/:id/status', async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to update internship status." }); }
 });
 
+app.get('/api/school-admin/:email/announcements/pending', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const school = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
+    if (school.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const schoolId = school.rows[0].id;
+    const result = await db.query(
+      `SELECT a.*, p.company_name, p.logo_url 
+       FROM industry_announcements a 
+       JOIN industry_partners p ON a.industry_email = p.email 
+       WHERE a.target_school_id = $1 AND a.status = 'Pending' 
+       ORDER BY a.created_at DESC`,
+      [schoolId]
+    );
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch pending announcements." }); }
+});
+
+app.put('/api/school-admin/announcements/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'Active' or 'Rejected'
+    const result = await db.query('UPDATE industry_announcements SET status = $1 WHERE id = $2 RETURNING *', [status, id]);
+    res.json({ message: `Announcement ${status}`, announcement: result.rows[0] });
+  } catch (error) { res.status(500).json({ error: "Failed to update announcement status." }); }
+});
+
 // 17. Student Internship View
 app.get('/api/student/jobs', async (req, res) => {
   try {
@@ -190,35 +218,177 @@ app.get('/api/industry/:email/dashboard', async (req, res) => {
 
     const partnerId = partner.rows[0].id;
     const jobs = await db.query('SELECT * FROM internships WHERE industry_id = $1 ORDER BY created_at DESC', [partnerId]);
+    const announcements = await db.query('SELECT * FROM industry_announcements WHERE industry_email = $1 ORDER BY created_at DESC', [email.toLowerCase().trim()]);
 
     res.json({
       partner: partner.rows[0],
       stats: {
         activeJobs: jobs.rows.filter(j => j.status === 'Active').length,
         totalJobs: jobs.rows.length,
-        applicants: 0
+        applicants: 0,
+        activeAnnouncements: announcements.rows.filter(a => a.status === 'Active').length
       },
-      jobs: jobs.rows
+      jobs: jobs.rows,
+      announcements: announcements.rows
     });
   } catch (error) { res.status(500).json({ error: "Failed to fetch industry dashboard." }); }
+});
+
+app.put('/api/industry/:email/profile', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { company_name, industry_type, phone, brn, logo_url, bio, website, linkedin, address } = req.body;
+    
+    const result = await db.query(
+      `UPDATE industry_partners 
+       SET company_name = $1, industry_type = $2, phone = $3, brn = $4, logo_url = $5, bio = $6, website = $7, linkedin = $8, address = $9
+       WHERE email = $10 RETURNING *`,
+      [company_name, industry_type, phone, brn, logo_url, bio, website, linkedin, address, email.toLowerCase().trim()]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "Partner not found" });
+    res.json({ message: "Profile updated successfully!", partner: result.rows[0] });
+  } catch (error) { 
+    console.error("Update Profile Error:", error.message);
+    res.status(500).json({ error: "Failed to update profile." }); 
+  }
+});
+
+app.post('/api/industry/upload-avatar', upload.single('photo'), async (req, res) => {
+  try {
+    const { email } = req.body;
+    const cleanEmail = email.toLowerCase().trim();
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No photo uploaded." });
+
+    const fileExt = file.originalname ? file.originalname.split('.').pop() : 'jpg';
+    const fileName = `industry_${cleanEmail.replace(/[@.]/g, '_')}_${Date.now()}.${fileExt}`;
+
+    const { data, error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file.buffer, { contentType: file.mimetype, upsert: true });
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+    await db.query('UPDATE industry_partners SET logo_url = $1 WHERE email = $2', [publicUrl, cleanEmail]);
+
+    res.json({ message: "Logo updated!", photoUrl: publicUrl });
+  } catch (error) {
+    console.error("Industry Upload Error:", error.message);
+    res.status(500).json({ error: "Upload failed." });
+  }
+});
+
+app.post('/api/industry/remove-avatar', async (req, res) => {
+  try {
+    const { email } = req.body;
+    await db.query('UPDATE industry_partners SET logo_url = NULL WHERE email = $1', [email.toLowerCase().trim()]);
+    res.json({ message: "Logo removed" });
+  } catch (error) { res.status(500).json({ error: "Removal failed" }); }
 });
 
 app.post('/api/industry/:email/jobs', async (req, res) => {
   try {
     const { email } = req.params;
-    const { title, description, requirements, location, employment_type } = req.body;
+    const { title, description, requirements, location, employment_type, cover_photo } = req.body;
 
     const partner = await db.query('SELECT id, company_name FROM industry_partners WHERE email = $1', [email.toLowerCase().trim()]);
     if (partner.rows.length === 0) return res.status(404).json({ error: "Partner not found" });
 
+    // Generate default cover if not provided
+    let finalCover = cover_photo;
+    if (!finalCover) {
+      finalCover = `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=random&size=400&font-size=0.33`;
+    }
+
     const result = await db.query(
-      `INSERT INTO internships (industry_id, company_name, title, description, requirements, location, employment_type) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [partner.rows[0].id, partner.rows[0].company_name, title, description, requirements, location, employment_type]
+      `INSERT INTO internships (industry_id, company_name, title, description, requirements, location, employment_type, cover_photo) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [partner.rows[0].id, partner.rows[0].company_name, title, description, requirements, location, employment_type, finalCover]
     );
 
     res.status(201).json({ message: "Job posted successfully!", job: result.rows[0] });
-  } catch (error) { res.status(500).json({ error: "Failed to post job." }); }
+  } catch (error) { 
+    console.error("Job Post Error:", error.message);
+    res.status(500).json({ error: "Failed to post job." }); 
+  }
+});
+
+app.post('/api/industry/upload-cover', upload.single('photo'), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No photo uploaded." });
+
+    const fileExt = file.originalname ? file.originalname.split('.').pop() : 'jpg';
+    const fileName = `cover_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+    const { data, error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file.buffer, { contentType: file.mimetype, upsert: true });
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+
+    res.json({ message: "Cover uploaded!", photoUrl: publicUrl });
+  } catch (error) {
+    console.error("Cover Upload Error:", error.message);
+    res.status(500).json({ error: "Upload failed." });
+  }
+});
+
+app.get('/api/industry/schools', async (req, res) => {
+  try {
+    const result = await db.query('SELECT id, name FROM schools ORDER BY name ASC');
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch schools." }); }
+});
+
+app.post('/api/industry/:email/announcements', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { title, description, type, target_school_id, cover_photo } = req.body;
+    const cleanEmail = email.toLowerCase().trim();
+
+    const partner = await db.query('SELECT id, company_name FROM industry_partners WHERE email = $1', [cleanEmail]);
+    if (partner.rows.length === 0) return res.status(404).json({ error: "Partner not found" });
+
+    let finalCover = cover_photo;
+    if (!finalCover) {
+      finalCover = `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=random&size=400&font-size=0.33`;
+    }
+
+    let insertedRecords = [];
+
+    if (target_school_id === 'All' || !target_school_id) {
+      // Duplicate for all schools
+      const schools = await db.query('SELECT id FROM schools');
+      for (let school of schools.rows) {
+        const result = await db.query(
+          `INSERT INTO industry_announcements (industry_email, target_school_id, title, description, type, cover_photo) 
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          [cleanEmail, school.id, title, description, type, finalCover]
+        );
+        insertedRecords.push(result.rows[0]);
+      }
+    } else {
+      // Specific school
+      const result = await db.query(
+        `INSERT INTO industry_announcements (industry_email, target_school_id, title, description, type, cover_photo) 
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [cleanEmail, target_school_id, title, description, type, finalCover]
+      );
+      insertedRecords.push(result.rows[0]);
+    }
+
+    res.status(201).json({ message: "Announcement posted successfully!", announcements: insertedRecords });
+  } catch (error) {
+    console.error("Announcement Post Error:", error.message);
+    res.status(500).json({ error: "Failed to post announcement." });
+  }
+});
+
+app.get('/api/industry/:email/announcements', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const result = await db.query('SELECT * FROM industry_announcements WHERE industry_email = $1 ORDER BY created_at DESC', [email.toLowerCase().trim()]);
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch announcements." }); }
 });
 
 app.get('/api/industry/:email/jobs', async (req, res) => {
@@ -232,6 +402,14 @@ app.get('/api/industry/:email/jobs', async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to fetch jobs." }); }
 });
 
+
+app.get('/api/industry/jobs/:jobId/applicants', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const result = await db.query('SELECT * FROM job_applications WHERE job_id = $1 ORDER BY applied_at DESC', [jobId]);
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch applicants." }); }
+});
 
 // --- AUTHENTICATION ROUTES ---
 
@@ -314,9 +492,23 @@ const initDB = async () => {
         status VARCHAR(50) DEFAULT 'Pending',
         logo_url TEXT,
         school_id INTEGER,
+        bio TEXT,
+        website TEXT,
+        linkedin TEXT,
+        address TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add missing columns if they don't exist
+    try {
+      await db.query(`ALTER TABLE industry_partners ADD COLUMN IF NOT EXISTS bio TEXT;`);
+      await db.query(`ALTER TABLE industry_partners ADD COLUMN IF NOT EXISTS website TEXT;`);
+      await db.query(`ALTER TABLE industry_partners ADD COLUMN IF NOT EXISTS linkedin TEXT;`);
+      await db.query(`ALTER TABLE industry_partners ADD COLUMN IF NOT EXISTS address TEXT;`);
+    } catch (err) {
+      console.log("Could not alter industry_partners table:", err.message);
+    }
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS internships (
@@ -331,6 +523,59 @@ const initDB = async () => {
         bg_color VARCHAR(20) DEFAULT '#DBEAFE',
         company_name VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Alter internships to add missing columns
+    try {
+      await db.query(`ALTER TABLE internships ADD COLUMN IF NOT EXISTS industry_id INTEGER REFERENCES industry_partners(id) ON DELETE CASCADE;`);
+      await db.query(`ALTER TABLE internships ADD COLUMN IF NOT EXISTS description TEXT;`);
+      await db.query(`ALTER TABLE internships ADD COLUMN IF NOT EXISTS requirements TEXT;`);
+      await db.query(`ALTER TABLE internships ADD COLUMN IF NOT EXISTS location VARCHAR(255);`);
+      await db.query(`ALTER TABLE internships ADD COLUMN IF NOT EXISTS employment_type VARCHAR(100);`);
+      await db.query(`ALTER TABLE internships ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Pending';`);
+      await db.query(`ALTER TABLE internships ADD COLUMN IF NOT EXISTS company_name VARCHAR(255);`);
+      await db.query(`ALTER TABLE internships ADD COLUMN IF NOT EXISTS cover_photo TEXT;`);
+    } catch (err) {
+      console.log("Could not alter internships table:", err.message);
+    }
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS industry_announcements (
+        id SERIAL PRIMARY KEY,
+        industry_email VARCHAR(255) NOT NULL,
+        target_school_id VARCHAR(50),
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        type VARCHAR(100),
+        cover_photo TEXT,
+        status VARCHAR(50) DEFAULT 'Pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Alter industry_announcements to add missing columns
+    try {
+      await db.query(`ALTER TABLE industry_announcements ADD COLUMN IF NOT EXISTS industry_email VARCHAR(255);`);
+      await db.query(`ALTER TABLE industry_announcements ADD COLUMN IF NOT EXISTS target_school_id VARCHAR(50);`);
+      await db.query(`ALTER TABLE industry_announcements ADD COLUMN IF NOT EXISTS description TEXT;`);
+      await db.query(`ALTER TABLE industry_announcements ADD COLUMN IF NOT EXISTS type VARCHAR(100);`);
+      await db.query(`ALTER TABLE industry_announcements ADD COLUMN IF NOT EXISTS cover_photo TEXT;`);
+      await db.query(`ALTER TABLE industry_announcements ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Pending';`);
+    } catch (err) {
+      console.log("Could not alter industry_announcements table:", err.message);
+    }
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS job_applications (
+        id SERIAL PRIMARY KEY,
+        job_id INTEGER REFERENCES internships(id) ON DELETE CASCADE,
+        student_id VARCHAR(50),
+        student_name VARCHAR(255),
+        student_email VARCHAR(255),
+        cv_url TEXT,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(50) DEFAULT 'Pending'
       )
     `);
 
@@ -768,6 +1013,23 @@ app.get('/api/student/:studentId/dashboard', async (req, res) => {
       console.error("Failed to fetch all notices for student:", err);
     }
 
+    // Fetch Industry Announcements
+    let industryAnnouncements = [];
+    try {
+      const annRes = await db.query(
+        `SELECT a.*, p.company_name, p.logo_url 
+         FROM industry_announcements a 
+         JOIN industry_partners p ON a.industry_email = p.email 
+         WHERE (a.target_school_id = $1 OR a.target_school_id IS NULL) 
+         AND a.status = 'Active' 
+         ORDER BY a.created_at DESC LIMIT 5`,
+        [schoolId]
+      );
+      industryAnnouncements = annRes.rows;
+    } catch (err) {
+      console.error("Failed to fetch industry announcements for student:", err);
+    }
+
     res.json({
       ongoingSubjects,
       gradesData,
@@ -775,7 +1037,8 @@ app.get('/api/student/:studentId/dashboard', async (req, res) => {
       attendanceStats,
       specialEvents,
       urgentNoticeData,
-      allNotices
+      allNotices,
+      industryAnnouncements
     });
   } catch (error) {
     console.error("Dashboard Fetch Error:", error.message);

@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { height } = Dimensions.get("window");
 
@@ -39,6 +40,8 @@ export default function IndustryLoginScreen() {
       const data = await response.json();
 
       if (response.ok) {
+        // Persist industry email for all tabs
+        await AsyncStorage.setItem('industryEmail', data.user.email);
         // Navigate to Industry dashboard
         router.push({
           pathname: "/(industry-tabs)/industry-screen",

@@ -29,8 +29,9 @@ export default function IndustryScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [dashboardData, setDashboardData] = useState<any>({
     partner: {},
-    stats: { activeJobs: 0, totalJobs: 0, applicants: 0 },
-    jobs: []
+    stats: { activeJobs: 0, totalJobs: 0, applicants: 0, activeAnnouncements: 0 },
+    jobs: [],
+    announcements: []
   });
 
   const fetchDashboardData = async () => {
@@ -85,7 +86,7 @@ export default function IndustryScreen() {
             <TouchableOpacity 
               style={styles.avatarPlaceholder} 
               activeOpacity={0.8}
-              onPress={() => router.push("/industry-profile")}
+              onPress={() => router.push({ pathname: "/(industry-tabs)/industry-profile", params: { company_name: companyName, email, logo_url: logoUrl || "null", status } })}
             >
               {logoUrl ? (
                 <Image source={{ uri: logoUrl }} style={styles.avatarImage} />
@@ -122,6 +123,13 @@ export default function IndustryScreen() {
             <Text style={styles.statLabel}>Active Jobs</Text>
           </View>
           <View style={styles.statCard}>
+            <View style={[styles.iconBox, { backgroundColor: '#FEF3C7' }]}>
+              <FontAwesome6 name="bullhorn" size={20} color="#D97706" />
+            </View>
+            <Text style={styles.statValue}>{dashboardData.stats.activeAnnouncements || 0}</Text>
+            <Text style={styles.statLabel}>Active Ann.</Text>
+          </View>
+          <View style={styles.statCard}>
             <View style={[styles.iconBox, { backgroundColor: '#F0FDF4' }]}>
               <Feather name="users" size={20} color="#16A34A" />
             </View>
@@ -130,35 +138,10 @@ export default function IndustryScreen() {
           </View>
         </View>
 
-        {/* Quick Actions */}
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionRow}>
-          <TouchableOpacity 
-            style={[styles.actionBtn, status !== 'Active' && { opacity: 0.5 }]} 
-            onPress={() => status === 'Active' ? router.push("/manage-jobs") : alert("You cannot post jobs until your account is approved by the Super Admin.")}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.actionIcon, { backgroundColor: '#2563EB' }]}>
-              <Feather name="plus" size={24} color="#FFF" />
-            </View>
-            <Text style={styles.actionLabel}>Post Job</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.actionBtn} 
-            onPress={() => router.push("/industry-profile")}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.actionIcon, { backgroundColor: '#64748B' }]}>
-              <Feather name="settings" size={24} color="#FFF" />
-            </View>
-            <Text style={styles.actionLabel}>Profile</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Recent Jobs */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>My Postings</Text>
-          <TouchableOpacity onPress={() => router.push("/manage-jobs")}>
+          <TouchableOpacity onPress={() => router.push({ pathname: "/manage-jobs", params: { email } })}>
             <Text style={styles.linkText}>View All</Text>
           </TouchableOpacity>
         </View>
@@ -168,7 +151,7 @@ export default function IndustryScreen() {
             <TouchableOpacity 
               key={job.id} 
               style={styles.jobCard}
-              onPress={() => router.push("/manage-jobs")}
+              onPress={() => router.push({ pathname: "/manage-jobs", params: { email } })}
               activeOpacity={0.8}
             >
               <View style={styles.jobInfo}>
@@ -186,10 +169,49 @@ export default function IndustryScreen() {
             <Text style={styles.emptyText}>You haven't posted any jobs yet.</Text>
             <TouchableOpacity 
               style={[styles.emptyBtn, status !== 'Active' && { backgroundColor: '#94A3B8' }]} 
-              onPress={() => status === 'Active' ? router.push("/manage-jobs") : alert("Account pending approval.")}
+              onPress={() => status === 'Active' ? router.push({ pathname: "/manage-jobs", params: { email } }) : alert("Account pending approval.")}
               activeOpacity={0.8}
             >
               <Text style={styles.emptyBtnText}>Post your first job</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Recent Announcements */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>My Announcements</Text>
+          <TouchableOpacity onPress={() => router.push({ pathname: "/manage-announcements", params: { email } })}>
+            <Text style={styles.linkText}>View All</Text>
+          </TouchableOpacity>
+        </View>
+
+        {dashboardData.announcements && dashboardData.announcements.length > 0 ? (
+          dashboardData.announcements.slice(0, 3).map((ann: any) => (
+            <TouchableOpacity 
+              key={ann.id} 
+              style={[styles.jobCard, { borderLeftColor: '#F59E0B' }]}
+              onPress={() => router.push({ pathname: "/manage-announcements", params: { email } })}
+              activeOpacity={0.8}
+            >
+              <View style={styles.jobInfo}>
+                <Text style={styles.jobTitle}>{ann.title}</Text>
+                <Text style={styles.jobDetails}>{ann.type} • {ann.target_school_id === null ? "All Schools" : ann.target_school_id}</Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: ann.status === 'Active' ? '#DCFCE7' : ann.status === 'Pending' ? '#FEF9C3' : '#FEE2E2' }]}>
+                <Text style={[styles.statusBadgeText, { color: ann.status === 'Active' ? '#16A34A' : ann.status === 'Pending' ? '#CA8A04' : '#EF4444' }]}>{ann.status}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        ) : (
+          <View style={[styles.emptyState, { marginTop: 10 }]}>
+            <MaterialCommunityIcons name="bullhorn-outline" size={48} color="#CBD5E1" />
+            <Text style={styles.emptyText}>No announcements posted.</Text>
+            <TouchableOpacity 
+              style={[styles.emptyBtn, status !== 'Active' && { backgroundColor: '#94A3B8' }]} 
+              onPress={() => status === 'Active' ? router.push({ pathname: "/manage-announcements", params: { email } }) : alert("Account pending approval.")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.emptyBtnText}>Post Announcement</Text>
             </TouchableOpacity>
           </View>
         )}

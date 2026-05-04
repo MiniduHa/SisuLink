@@ -172,7 +172,7 @@ export default function SchoolAdminLayout() {
     { name: 'Classes', path: '/school-admin/classes', icon: BookOpen },
     { name: 'Calendar', path: '/school-admin/calendar', icon: CalendarDays },
     { name: 'Notices', path: '/school-admin/notices', icon: Bell },
-    { name: 'Job Approvals', path: '/school-admin/internships', icon: Building2 },
+    { name: 'Industry Posts', path: '/school-admin/industry-posts', icon: Building2 },
   ];
 
   return (

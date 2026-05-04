@@ -20,7 +20,7 @@ import ManageClasses from './pages/school-admin/ManageClasses';
 import ManageCalendar from './pages/school-admin/ManageCalendar';
 import ManageNotices from './pages/school-admin/ManageNotices';
 import ManageParents from './pages/school-admin/ManageParents';
-import InternshipApprovals from './pages/school-admin/InternshipApprovals';
+import IndustryApprovals from './pages/school-admin/IndustryApprovals';
 
 function App() {
   return (
@@ -49,7 +49,7 @@ function App() {
           <Route path="calendar" element={<ManageCalendar />} />
           <Route path="notices" element={<ManageNotices />} />
           <Route path="parents" element={<ManageParents />} />
-          <Route path="internships" element={<InternshipApprovals />} />
+          <Route path="industry-posts" element={<IndustryApprovals />} />
         </Route>
 
       </Routes>

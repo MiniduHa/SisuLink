@@ -40,10 +40,17 @@ export default function IndustryTabsLayout() {
       />
 
       <Tabs.Screen
+        name="manage-announcements"
+        options={{
+          title: "ANNOUNCEMENTS",
+          tabBarIcon: ({ color }) => <FontAwesome6 name="bullhorn" size={20} color={color} />,
+        }}
+      />
+
+      <Tabs.Screen
         name="industry-profile"
         options={{
-          title: "PROFILE",
-          tabBarIcon: ({ color }) => <FontAwesome6 name="building" size={20} color={color} />,
+          href: null,
         }}
       />
     </Tabs>
