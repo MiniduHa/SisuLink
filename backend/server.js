@@ -54,6 +54,60 @@ app.get('/api/schools/list', async (req, res) => {
   }
 });
 
+// 3.5 Fetch distinct grades for a specific school (Public for Signup)
+app.get('/api/schools/:schoolName/grades', async (req, res) => {
+  try {
+    const { schoolName } = req.params;
+    const result = await db.query(`
+      SELECT grade FROM (
+        SELECT DISTINCT grade 
+        FROM classes c
+        JOIN schools s ON c.school_id = s.id
+        WHERE s.name = $1
+      ) AS distinct_grades
+      ORDER BY 
+        CASE 
+          WHEN grade ILIKE 'Grade 1' THEN 1
+          WHEN grade ILIKE 'Grade 2' THEN 2
+          WHEN grade ILIKE 'Grade 3' THEN 3
+          WHEN grade ILIKE 'Grade 4' THEN 4
+          WHEN grade ILIKE 'Grade 5' THEN 5
+          WHEN grade ILIKE 'Grade 6' THEN 6
+          WHEN grade ILIKE 'Grade 7' THEN 7
+          WHEN grade ILIKE 'Grade 8' THEN 8
+          WHEN grade ILIKE 'Grade 9' THEN 9
+          WHEN grade ILIKE 'Grade 10' THEN 10
+          WHEN grade ILIKE 'Grade 11' THEN 11
+          WHEN grade ILIKE 'Grade 12' THEN 12
+          WHEN grade ILIKE 'Grade 13' THEN 13
+          ELSE 14
+        END
+    `, [schoolName]);
+    res.json(result.rows.map(r => r.grade));
+  } catch (error) {
+    console.error("Fetch School Grades Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch school grades." });
+  }
+});
+
+// 3.6 Fetch rooms for a specific school and grade (Public for Signup)
+app.get('/api/schools/:schoolName/grades/:grade/rooms', async (req, res) => {
+  try {
+    const { schoolName, grade } = req.params;
+    const result = await db.query(`
+      SELECT room_number, section
+      FROM classes c
+      JOIN schools s ON c.school_id = s.id
+      WHERE s.name = $1 AND c.grade = $2
+      ORDER BY room_number ASC
+    `, [schoolName, grade]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Fetch School Rooms Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch rooms." });
+  }
+});
+
 // 4. School Admin Dashboard Data
 app.get('/api/school-admin/:email/dashboard', schoolAdminController.getSchoolDashboardStats);
 
@@ -473,13 +527,19 @@ const initDB = async () => {
       CREATE TABLE IF NOT EXISTS student_attendance (
         id SERIAL PRIMARY KEY,
         school_id VARCHAR(50) REFERENCES schools(id) ON DELETE CASCADE,
-        student_id UUID REFERENCES students(id) ON DELETE CASCADE,
+        student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
         date DATE NOT NULL,
         status VARCHAR(50) NOT NULL, 
         marked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(student_id, date) 
       )
     `);
+
+    try {
+      await db.query(`ALTER TABLE student_attendance ALTER COLUMN student_id TYPE INTEGER USING (student_id::text::integer);`);
+    } catch (err) {
+      // Column might already be integer or table might not exist yet
+    }
     await db.query(`
       CREATE TABLE IF NOT EXISTS industry_partners (
         id SERIAL PRIMARY KEY,
@@ -680,7 +740,7 @@ app.post('/api/auth/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     if (role === 'Student') {
-      const { first_name, last_name, grade_level, index_number, school_name } = req.body;
+      const { first_name, last_name, grade_level, section, index_number, school_name, subjects } = req.body;
 
       let school_id = null;
       if (school_name) {
@@ -693,8 +753,8 @@ app.post('/api/auth/register', async (req, res) => {
       }
 
       const result = await db.query(
-        `INSERT INTO students (first_name, last_name, email, password, grade_level, index_number, school_name, school_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, first_name, last_name, email`,
-        [first_name, last_name, email, hashedPassword, grade_level, index_number, school_name.trim(), school_id]
+        `INSERT INTO students (first_name, last_name, email, password, grade_level, section, index_number, school_name, school_id, subjects) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, first_name, last_name, email`,
+        [first_name, last_name, email, hashedPassword, grade_level, section, index_number, school_name.trim(), school_id, subjects || []]
       );
       return res.status(201).json({ message: "Student registered successfully!", user: result.rows[0] });
 
@@ -864,7 +924,13 @@ app.get('/api/student/:studentId/dashboard', async (req, res) => {
     const studentRes = await db.query('SELECT school_id, grade_level, subjects FROM students WHERE index_number = $1', [studentId]);
     if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
 
-    const { school_id: schoolId, grade_level: gradeLevel, subjects: enrolledSubjectsData } = studentRes.rows[0];
+    const student = studentRes.rows[0];
+    const { school_id: schoolId, grade_level: gradeLevel, subjects: enrolledSubjectsData } = student;
+
+    // Check grade for industry visibility
+    const gradeMatch = gradeLevel.match(/\d+/);
+    const gradeNum = gradeMatch ? parseInt(gradeMatch[0], 10) : 0;
+    const isIndustryVisible = gradeNum >= 10;
 
     // Parse subjects from student record (stored as JSON array)
     let enrolledSubjects = [];
@@ -912,22 +978,69 @@ app.get('/api/student/:studentId/dashboard', async (req, res) => {
       trendColor: g.trend === 'arrow-trend-up' ? '#22C55E' : '#9CA3AF'
     }));
 
-    const internshipsRes = await db.query('SELECT * FROM internships ORDER BY created_at DESC LIMIT 5');
-    const internshipsData = internshipsRes.rows.map(job => ({
-      id: job.id.toString(),
-      title: job.title,
-      company: `${job.company_name} • ${job.location}`,
-      type: job.employment_type,
-      bg: job.bg_color
-    }));
+    // 5. Recommended Internships (only for Grade 10-13)
+    let internshipsData = [];
+    if (isIndustryVisible) {
+      const internshipsRes = await db.query("SELECT * FROM internships WHERE status = 'Active' ORDER BY created_at DESC LIMIT 5");
+      internshipsData = internshipsRes.rows.map(job => ({
+        id: job.id.toString(),
+        title: job.title,
+        company: `${job.company_name} • ${job.location}`,
+        type: job.employment_type,
+        bg: job.bg_color || "#F1F5F9"
+      }));
+    }
 
-    const attendanceStats = {
-      percentage: "85%",
-      status: "On Track",
-      message: "Excellent consistency this month.",
-      present: 170,
-      absent: 30
+    // Fetch Real Attendance Stats
+    let attendanceStats = {
+      percentage: "0%",
+      status: "No Data",
+      message: "Attendance tracking has not started.",
+      present: 0,
+      absent: 0
     };
+
+    try {
+      const studentInternalRes = await db.query('SELECT id FROM students WHERE index_number = $1', [studentId]);
+      if (studentInternalRes.rows.length > 0) {
+        const internalId = studentInternalRes.rows[0].id;
+        const attRes = await db.query(
+          `SELECT status, COUNT(*) as count 
+           FROM student_attendance 
+           WHERE student_id = $1 
+           GROUP BY status`, 
+          [internalId]
+        );
+        
+        let presentCount = 0;
+        let absentCount = 0;
+        attRes.rows.forEach(row => {
+          if (row.status === 'Present') presentCount = parseInt(row.count, 10);
+          if (row.status === 'Absent') absentCount = parseInt(row.count, 10);
+        });
+        
+        const totalCount = presentCount + absentCount;
+        if (totalCount > 0) {
+          const percentage = Math.round((presentCount / totalCount) * 100);
+          attendanceStats.percentage = `${percentage}%`;
+          attendanceStats.present = presentCount;
+          attendanceStats.absent = absentCount;
+          
+          if (percentage >= 80) {
+            attendanceStats.status = "Excellent";
+            attendanceStats.message = "Great consistency this term.";
+          } else if (percentage >= 60) {
+            attendanceStats.status = "Average";
+            attendanceStats.message = "Try to attend more regularly.";
+          } else {
+            attendanceStats.status = "Low";
+            attendanceStats.message = "Your attendance needs improvement.";
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching student attendance stats:", err);
+    }
 
     // Fetch Special Events (Latest School News)
     let specialEvents = [];
@@ -1013,21 +1126,23 @@ app.get('/api/student/:studentId/dashboard', async (req, res) => {
       console.error("Failed to fetch all notices for student:", err);
     }
 
-    // Fetch Industry Announcements
+    // Fetch Industry Announcements (only for Grade 10-13)
     let industryAnnouncements = [];
-    try {
-      const annRes = await db.query(
-        `SELECT a.*, p.company_name, p.logo_url 
-         FROM industry_announcements a 
-         JOIN industry_partners p ON a.industry_email = p.email 
-         WHERE (a.target_school_id = $1 OR a.target_school_id IS NULL) 
-         AND a.status = 'Active' 
-         ORDER BY a.created_at DESC LIMIT 5`,
-        [schoolId]
-      );
-      industryAnnouncements = annRes.rows;
-    } catch (err) {
-      console.error("Failed to fetch industry announcements for student:", err);
+    if (isIndustryVisible) {
+      try {
+        const annRes = await db.query(
+          `SELECT a.*, p.company_name, p.logo_url 
+           FROM industry_announcements a 
+           JOIN industry_partners p ON a.industry_email = p.email 
+           WHERE (a.target_school_id = $1 OR a.target_school_id IS NULL) 
+           AND a.status = 'Active' 
+           ORDER BY a.created_at DESC LIMIT 5`,
+          [schoolId]
+        );
+        industryAnnouncements = annRes.rows;
+      } catch (err) {
+        console.error("Failed to fetch industry announcements for student:", err);
+      }
     }
 
     res.json({
@@ -1043,6 +1158,34 @@ app.get('/api/student/:studentId/dashboard', async (req, res) => {
   } catch (error) {
     console.error("Dashboard Fetch Error:", error.message);
     res.status(500).json({ error: "Server error fetching dashboard data." });
+  }
+});
+
+
+// ---> FETCH STUDENT ATTENDANCE HISTORY <---
+app.get('/api/student/:studentId/attendance-history', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    
+    // First get the internal UUID
+    const studentRes = await db.query('SELECT id FROM students WHERE index_number = $1', [studentId]);
+    if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
+    const internalId = studentRes.rows[0].id;
+
+    // Fetch attendance records for the last 30 days
+    const result = await db.query(
+      `SELECT date, status 
+       FROM student_attendance 
+       WHERE student_id = $1 
+       AND date >= CURRENT_DATE - INTERVAL '30 days'
+       ORDER BY date DESC`,
+      [internalId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Attendance History Fetch Error:", error.message);
+    res.status(500).json({ error: "Server error fetching attendance history." });
   }
 });
 
@@ -1080,6 +1223,18 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
     if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
     const teacher = teacherRes.rows[0];
     const teacherDbId = teacher.id;
+
+    let managedClass = null;
+    if (teacher.is_class_teacher) {
+      try {
+        const classRes = await db.query('SELECT id, grade, section FROM classes WHERE class_teacher_id = $1', [teacherDbId]);
+        if (classRes.rows.length > 0) {
+          managedClass = classRes.rows[0];
+        }
+      } catch (err) {
+        console.error("Failed to fetch managed class:", err);
+      }
+    }
 
     // Determine current day of the week 
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1201,20 +1356,30 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
 
     let realTotalStudents = 0;
     try {
-      const studentCountRes = await db.query(
-        `SELECT COUNT(DISTINCT s.id) as count
-         FROM students s
-         WHERE s.school_id = $1
-         AND EXISTS (
-           SELECT 1 FROM class_timetables ct
-           WHERE ct.teacher_id = $2
-           AND s.subjects ? ct.subject
-         )`,
-        [teacher.school_id, teacherDbId]
-      );
-      realTotalStudents = parseInt(studentCountRes.rows[0].count, 10);
+      if (teacher.is_class_teacher && managedClass) {
+        // COUNT STUDENTS IN THE MANAGED CLASS
+        const classStudentCountRes = await db.query(
+          `SELECT COUNT(*) as count FROM students WHERE school_id = $1 AND grade_level = $2 AND section = $3`,
+          [teacher.school_id, managedClass.grade, managedClass.section]
+        );
+        realTotalStudents = parseInt(classStudentCountRes.rows[0].count, 10);
+      } else {
+        // COUNT DISTINCT STUDENTS TAUGHT BY THIS TEACHER
+        const taughtStudentCountRes = await db.query(
+          `SELECT COUNT(DISTINCT s.id) as count
+           FROM students s
+           WHERE s.school_id = $1
+           AND EXISTS (
+             SELECT 1 FROM class_timetables ct
+             WHERE ct.teacher_id = $2
+             AND s.subjects ? ct.subject
+           )`,
+          [teacher.school_id, teacherDbId]
+        );
+        realTotalStudents = parseInt(taughtStudentCountRes.rows[0].count, 10);
+      }
     } catch (e) {
-      console.error("Error fetching distinct student count:", e);
+      console.error("Error fetching student count:", e);
     }
 
     const stats = {
@@ -1228,7 +1393,9 @@ app.get('/api/teacher/:email/dashboard', async (req, res) => {
         staff_id: teacher.staff_id,
         email: teacher.email,
         department: teacher.department,
-        profile_photo: teacher.profile_photo_url
+        profile_photo: teacher.profile_photo_url,
+        is_class_teacher: teacher.is_class_teacher,
+        managedClass: managedClass
       },
       todaysClasses,
       urgentNoticeData,
@@ -1333,6 +1500,59 @@ app.get('/api/teacher/:email/students', async (req, res) => {
   } catch (error) {
     console.error("Teacher Students App error", error);
     res.status(500).json({ error: "Server error fetching students connected to teacher." });
+  }
+});
+
+// ---> TEACHER CLASS STUDENTS ROUTE <---
+app.get('/api/teacher/:email/class-students', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+
+    const teacherRes = await db.query('SELECT id, school_id FROM teachers WHERE email = $1', [cleanEmail]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    const teacherDbId = teacherRes.rows[0].id;
+
+    // Fetch students belonging to the class this teacher manages
+    const studentsRes = await db.query(
+      `SELECT s.id, s.first_name, s.last_name, s.index_number, s.grade_level, s.section, s.profile_photo_url 
+       FROM students s
+       JOIN classes c ON s.grade_level = c.grade AND s.section = c.section AND s.school_id = c.school_id
+       WHERE c.class_teacher_id = $1
+       ORDER BY s.first_name`,
+      [teacherDbId]
+    );
+
+    res.json(studentsRes.rows);
+  } catch (error) {
+    console.error("Teacher Class Students error", error);
+    res.status(500).json({ error: "Server error fetching class students." });
+  }
+});
+
+// ---> TEACHER MARK ATTENDANCE ROUTE <---
+app.post('/api/teacher/attendance', async (req, res) => {
+  try {
+    const { date, attendanceData } = req.body; 
+    
+    for (let record of attendanceData) {
+      const studentRes = await db.query('SELECT school_id FROM students WHERE id = $1', [record.studentId]);
+      if (studentRes.rows.length === 0) continue;
+      const schoolId = studentRes.rows[0].school_id;
+
+      await db.query(
+        `INSERT INTO student_attendance (school_id, student_id, date, status)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (student_id, date) 
+         DO UPDATE SET status = EXCLUDED.status, marked_at = CURRENT_TIMESTAMP`,
+        [schoolId, record.studentId, date, record.status]
+      );
+    }
+
+    res.json({ message: "Attendance marked successfully!" });
+  } catch (error) {
+    console.error("Teacher Mark Attendance error", error);
+    res.status(500).json({ error: "Server error marking attendance." });
   }
 });
 
@@ -2159,6 +2379,190 @@ app.get('/api/student/:email/contacts', async (req, res) => {
   } catch (error) {
     console.error("Fetch Student Contacts Error:", error);
     res.status(500).json({ error: "Failed to fetch contacts." });
+  }
+});
+
+// ---> TEACHER ATTENDANCE HISTORY <---
+app.get('/api/teacher/:email/attendance-history', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1. Get teacher info and their class
+    const teacherRes = await db.query('SELECT id, is_class_teacher FROM teachers WHERE email = $1', [cleanEmail]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    const teacher = teacherRes.rows[0];
+
+    if (!teacher.is_class_teacher) return res.status(403).json({ error: "Access denied. Only class teachers can view history." });
+
+    const classRes = await db.query('SELECT grade, section FROM classes WHERE class_teacher_id = $1', [teacher.id]);
+    if (classRes.rows.length === 0) return res.status(404).json({ error: "No managed class found for this teacher." });
+    const { grade, section } = classRes.rows[0];
+
+    // 2. Fetch history grouped by date
+    // We only show current academic year (from Jan 1st)
+    const currentYear = new Date().getFullYear();
+    const startDate = `${currentYear}-01-01`;
+
+    const historyRes = await db.query(
+      `SELECT 
+        sa.date, 
+        COUNT(CASE WHEN sa.status = 'Present' THEN 1 END) as present_count,
+        COUNT(CASE WHEN sa.status = 'Absent' THEN 1 END) as absent_count
+       FROM student_attendance sa
+       JOIN students s ON sa.student_id = s.id
+       WHERE s.grade_level = $1 AND s.section = $2 AND sa.date >= $3
+       GROUP BY sa.date
+       ORDER BY sa.date DESC`,
+      [grade, section, startDate]
+    );
+
+    res.json(historyRes.rows);
+  } catch (error) {
+    console.error("Fetch Attendance History Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch attendance history." });
+  }
+});
+
+// ---> TEACHER ATTENDANCE MONTHLY REPORT <---
+app.get('/api/teacher/:email/attendance-monthly-report/:year/:month', async (req, res) => {
+  try {
+    const { email, year, month } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1. Get teacher info and their class
+    const teacherRes = await db.query('SELECT id FROM teachers WHERE email = $1', [cleanEmail]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    const teacherId = teacherRes.rows[0].id;
+
+    const classRes = await db.query('SELECT grade, section FROM classes WHERE class_teacher_id = $1', [teacherId]);
+    if (classRes.rows.length === 0) return res.status(404).json({ error: "No managed class found." });
+    const { grade, section } = classRes.rows[0];
+
+    // 2. Get all students in the class
+    const studentsRes = await db.query(
+      'SELECT id, first_name, last_name, index_number FROM students WHERE grade_level = $1 AND section = $2 ORDER BY first_name ASC',
+      [grade, section]
+    );
+    const students = studentsRes.rows;
+
+    // 3. Get all attendance records for the class in that month
+    const startDate = `${year}-${month.padStart(2, '0')}-01`;
+    const endDate = new Date(parseInt(year), parseInt(month), 0).toISOString().split('T')[0];
+
+    const attendanceRes = await db.query(
+      `SELECT sa.student_id, sa.date, sa.status
+       FROM student_attendance sa
+       JOIN students s ON sa.student_id = s.id
+       WHERE s.grade_level = $1 AND s.section = $2 
+       AND sa.date >= $3 AND sa.date <= $4`,
+      [grade, section, startDate, endDate]
+    );
+
+    // 4. Format into a matrix
+    const attendanceMap = {};
+    attendanceRes.rows.forEach(row => {
+      const dateStr = new Date(row.date).toISOString().split('T')[0];
+      if (!attendanceMap[row.student_id]) attendanceMap[row.student_id] = {};
+      attendanceMap[row.student_id][dateStr] = row.status;
+    });
+
+    res.json({
+      students,
+      attendanceMap,
+      startDate,
+      endDate
+    });
+  } catch (error) {
+    console.error("Fetch Monthly Report Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch monthly report." });
+  }
+});
+
+// ---> FETCH STUDENTS FOR A CLASS TEACHER <---
+app.get('/api/teacher/:email/class-students', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1. Get teacher info
+    const teacherRes = await db.query('SELECT id, is_class_teacher FROM teachers WHERE email = $1', [cleanEmail]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    const teacher = teacherRes.rows[0];
+
+    if (!teacher.is_class_teacher) return res.status(403).json({ error: "Access denied. Only class teachers can access this." });
+
+    // 2. Get managed class
+    const classRes = await db.query('SELECT grade, section FROM classes WHERE class_teacher_id = $1', [teacher.id]);
+    if (classRes.rows.length === 0) return res.json([]); // No class assigned yet
+
+    const { grade, section } = classRes.rows[0];
+
+    // 3. Get students in that class
+    const studentsRes = await db.query(
+      'SELECT id, first_name, last_name, index_number, profile_photo_url FROM students WHERE grade_level = $1 AND section = $2 ORDER BY first_name ASC',
+      [grade, section]
+    );
+
+    // 4. Get existing attendance for today
+    const today = new Date().toISOString().split('T')[0];
+    const attendanceRes = await db.query(
+      `SELECT student_id, status FROM student_attendance WHERE date = $1 AND student_id IN (
+        SELECT id FROM students WHERE grade_level = $2 AND section = $3
+      )`,
+      [today, grade, section]
+    );
+
+    const existingAttendance = {};
+    attendanceRes.rows.forEach(row => {
+      existingAttendance[row.student_id] = row.status;
+    });
+
+    res.json({
+      students: studentsRes.rows,
+      existingAttendance
+    });
+  } catch (error) {
+    console.error("Fetch Class Students Error:", error.message);
+    res.status(500).json({ error: "Server error fetching class students." });
+  }
+});
+
+// ---> SUBMIT DAILY ATTENDANCE <---
+app.post('/api/teacher/attendance', async (req, res) => {
+  try {
+    const { date, attendanceData } = req.body;
+
+    if (!date || !attendanceData || !Array.isArray(attendanceData)) {
+      return res.status(400).json({ error: "Invalid attendance data." });
+    }
+
+    // Use a transaction for safety
+    await db.query('BEGIN');
+
+    for (const item of attendanceData) {
+      const { studentId, status } = item;
+      
+      // Get school_id for the student
+      const studentRes = await db.query('SELECT school_id FROM students WHERE id = $1', [studentId]);
+      if (studentRes.rows.length > 0) {
+        const schoolId = studentRes.rows[0].school_id;
+        
+        await db.query(
+          `INSERT INTO student_attendance (school_id, student_id, date, status)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (student_id, date) DO UPDATE SET status = EXCLUDED.status, marked_at = CURRENT_TIMESTAMP`,
+          [schoolId, studentId, date, status]
+        );
+      }
+    }
+
+    await db.query('COMMIT');
+    res.json({ message: "Attendance updated successfully!" });
+  } catch (error) {
+    await db.query('ROLLBACK');
+    console.error("Attendance Submit Error:", error.message);
+    res.status(500).json({ error: "Failed to submit attendance." });
   }
 });
 

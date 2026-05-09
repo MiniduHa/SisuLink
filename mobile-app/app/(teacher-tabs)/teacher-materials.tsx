@@ -73,11 +73,15 @@ export default function TeacherMaterialsScreen() {
 
   // --- DYNAMIC GRADE FILTERING ---
   // Calculates which grades to show based on the teacher's department
-  let availableGrades = ["Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "Grade 13"];
-  if (teacherProfile?.department === "O/L") {
+  let availableGrades = Array.from({ length: 13 }, (_, i) => `Grade ${i + 1}`);
+  if (teacherProfile?.department === "Senior Secondary (O/L)") {
     availableGrades = ["Grade 10", "Grade 11"];
-  } else if (teacherProfile?.department && teacherProfile.department.includes("Section")) {
+  } else if (teacherProfile?.department && teacherProfile.department.includes("A/L")) {
     availableGrades = ["Grade 12", "Grade 13"];
+  } else if (teacherProfile?.department === "Primary Section") {
+    availableGrades = ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5"];
+  } else if (teacherProfile?.department === "Junior Secondary Section") {
+    availableGrades = ["Grade 6", "Grade 7", "Grade 8", "Grade 9"];
   }
 
   // Ensure the default selected grade is valid for this teacher

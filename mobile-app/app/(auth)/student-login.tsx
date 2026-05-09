@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { height } = Dimensions.get("window");
 const API_URL = "http://172.20.10.7:5000/api/auth/login";
@@ -45,7 +46,10 @@ export default function StudentLoginScreen() {
       });
       const data = await response.json();
       if (response.ok) {
-        
+        // Save to AsyncStorage for global access (e.g. hiding tabs)
+        await AsyncStorage.setItem('studentGrade', data.student.grade_level);
+        await AsyncStorage.setItem('studentEmail', data.student.email);
+
         router.replace({
           pathname: "/(student-tabs)/student-screen",
           params: { 

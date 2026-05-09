@@ -33,6 +33,10 @@ export default function StudentScreen() {
   const studentId = (params.studentId as string) || "";
 
   const avatarInitials = (firstName[0] + (lastName[0] || "")).toUpperCase();
+  const gradeMatch = gradeLevel.match(/\d+/);
+  const gradeNum = gradeMatch ? parseInt(gradeMatch[0], 10) : 0;
+  const isIndustryVisible = gradeNum >= 10;
+  
   const isALevel = gradeLevel.includes("12") || gradeLevel.includes("13");
   const academicLevel = isALevel ? "A/L" : "O/L";
 
@@ -51,6 +55,9 @@ export default function StudentScreen() {
   const [allMaterials, setAllMaterials] = useState<any[]>([]);
 
   const [messages, setMessages] = useState<any[]>([]);
+  const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
+  const [calendarDays, setCalendarDays] = useState<any[]>([]);
+  const [calendarMonthName, setCalendarMonthName] = useState("");
 
   // --- FETCH LATEST DATA EVERY TIME SCREEN APPEARS ---
   useFocusEffect(
@@ -65,17 +72,20 @@ export default function StudentScreen() {
           const profileRes = fetch(`http://172.20.10.7:5000/api/profile/${studentId}?t=${timestamp}`);
           const dashboardRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/dashboard?t=${timestamp}`);
           const materialsRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/materials?t=${timestamp}`);
+          const historyRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/attendance-history?t=${timestamp}`);
           
-          const [profileResponse, dashboardResponse, materialsResponse] = await Promise.all([
+          const [profileResponse, dashboardResponse, materialsResponse, historyResponse] = await Promise.all([
             profileRes, 
             dashboardRes,
-            materialsRes
+            materialsRes,
+            historyRes
           ]);
 
-          if (profileResponse.ok && dashboardResponse.ok && materialsResponse.ok && isActive) {
+          if (profileResponse.ok && dashboardResponse.ok && materialsResponse.ok && historyResponse.ok && isActive) {
             const profileData = await profileResponse.json();
             const dashData = await dashboardResponse.json();
             const materialsData = await materialsResponse.json();
+            const historyData = await historyResponse.json();
             
             setFirstName(profileData.first_name);
             setLastName(profileData.last_name);
@@ -84,6 +94,7 @@ export default function StudentScreen() {
             if (profileData.profile_photo_url) setProfilePhoto(profileData.profile_photo_url);
             setDashboardData(dashData);
             setAllMaterials(materialsData);
+            setAttendanceHistory(historyData);
           }
         } catch (error) {
           console.error("Failed to fetch dashboard data:", error);
@@ -138,11 +149,49 @@ export default function StudentScreen() {
   const currentSubjectNotes = allMaterials.filter(m => m.subject === selectedSubject?.name && (m.material_type === 'Note' || m.material_type === 'PDF' || m.material_type?.toLowerCase().includes('note') || m.material_type?.toLowerCase().includes('pdf')));
   const currentSubjectGeneral = allMaterials.filter(m => m.subject === selectedSubject?.name && !currentSubjectVideos.includes(m) && !currentSubjectNotes.includes(m));
 
-  const calendarDays = [
-    { day: 28, type: 'prev', status: 'none' }, { day: 29, type: 'prev', status: 'none' }, { day: 30, type: 'prev', status: 'none' },
-    { day: 1, type: 'current', status: 'present' }, { day: 2, type: 'current', status: 'present' }, { day: 3, type: 'current', status: 'absent' }, { day: 4, type: 'current', status: 'present' },
-    { day: 5, type: 'current', status: 'none' }, { day: 6, type: 'current', status: 'present', selected: true }, { day: 7, type: 'current', status: 'none' }, { day: 8, type: 'current', status: 'present' }, { day: 9, type: 'current', status: 'present' }, { day: 10, type: 'current', status: 'present' }, { day: 11, type: 'current', status: 'none' },
-  ];
+  useEffect(() => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    setCalendarMonthName(`${months[month]} ${year}`);
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDay = firstDay.getDay(); // 0 = Sunday
+    
+    const days = [];
+    
+    // Previous month filler days
+    const prevLastDay = new Date(year, month, 0).getDate();
+    for (let i = startingDay - 1; i >= 0; i--) {
+      days.push({ day: prevLastDay - i, type: 'prev', status: 'none' });
+    }
+    
+    // Current month days
+    for (let i = 1; i <= daysInMonth; i++) {
+      // Create local date string in YYYY-MM-DD
+      const loopDate = new Date(year, month, i);
+      const localDateStr = `${loopDate.getFullYear()}-${String(loopDate.getMonth() + 1).padStart(2, '0')}-${String(loopDate.getDate()).padStart(2, '0')}`;
+      
+      const record = attendanceHistory.find(r => r.date.startsWith(localDateStr));
+      
+      let status = 'none';
+      if (record) {
+        status = record.status.toLowerCase();
+      }
+      
+      days.push({ 
+        day: i, 
+        type: 'current', 
+        status: status,
+        selected: i === date.getDate()
+      });
+    }
+    
+    setCalendarDays(days);
+  }, [attendanceHistory]);
 
   const openSubject = (subject: any) => {
     setSelectedSubject(subject);
@@ -331,50 +380,55 @@ export default function StudentScreen() {
             </View>
           </View>
         ))}
-
         {/* INDUSTRY ANNOUNCEMENTS SECTION */}
-        <View style={[styles.sectionHeader, { marginTop: 10 }]}>
-          <Text style={styles.sectionTitle}>Industry Announcements</Text>
-        </View>
+        {isIndustryVisible && (
+          <>
+            <View style={[styles.sectionHeader, { marginTop: 10 }]}>
+              <Text style={styles.sectionTitle}>Industry Announcements</Text>
+            </View>
+            <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.newsCarouselScroll}>
+              {dashboardData.industryAnnouncements && dashboardData.industryAnnouncements.length > 0 ? (
+                dashboardData.industryAnnouncements.map((ann: any) => (
+                  <TouchableOpacity key={ann.id} style={styles.newsCard} activeOpacity={0.9}>
+                    <ImageBackground source={{ uri: ann.cover_photo || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=500&q=80" }} style={styles.newsImage} imageStyle={{ borderRadius: 16 }}>
+                      <View style={styles.newsOverlay}>
+                        <Text style={styles.newsDate}>{new Date(ann.created_at).toLocaleDateString()}</Text>
+                        <Text style={styles.newsTitle} numberOfLines={2}>{ann.title}</Text>
+                        <Text style={{color: '#E2E8F0', fontSize: 12, marginTop: 4}}>{ann.company_name} • {ann.type}</Text>
+                      </View>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={[styles.newsCard, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1F5F9' }]}>
+                   <Text style={{ color: '#64748B', fontStyle: 'italic' }}>No industry announcements.</Text>
+                </View>
+              )}
+            </ScrollView>
+          </>
+        )}
 
-        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.newsCarouselScroll}>
-          {dashboardData.industryAnnouncements && dashboardData.industryAnnouncements.length > 0 ? (
-            dashboardData.industryAnnouncements.map((ann: any) => (
-              <TouchableOpacity key={ann.id} style={styles.newsCard} activeOpacity={0.9}>
-                <ImageBackground source={{ uri: ann.cover_photo || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=500&q=80" }} style={styles.newsImage} imageStyle={{ borderRadius: 16 }}>
-                  <View style={styles.newsOverlay}>
-                    <Text style={styles.newsDate}>{new Date(ann.created_at).toLocaleDateString()}</Text>
-                    <Text style={styles.newsTitle} numberOfLines={2}>{ann.title}</Text>
-                    <Text style={{color: '#E2E8F0', fontSize: 12, marginTop: 4}}>{ann.company_name} • {ann.type}</Text>
+        {isIndustryVisible && (
+          <>
+            <View style={[styles.sectionHeader, { marginTop: 10 }]}>
+              <Text style={styles.sectionTitle}>Recommended Internships</Text>
+              <TouchableOpacity onPress={() => router.push("/jobs")}><Text style={styles.linkText}>See All</Text></TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.internshipScroll}>
+              {dashboardData.internshipsData.map((item: any) => (
+                <View key={item.id} style={[styles.internshipCard, { backgroundColor: item.bg }]}>
+                  <View style={styles.internshipTopRow}>
+                    <View style={styles.companyLogoPlaceholder}><Text style={styles.companyInitial}>{item.company.charAt(0)}</Text></View>
+                    <View style={styles.typeBadge}><Text style={styles.typeBadgeText}>{item.type}</Text></View>
                   </View>
-                </ImageBackground>
-              </TouchableOpacity>
-            ))
-          ) : (
-            <View style={[styles.newsCard, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1F5F9' }]}>
-               <Text style={{ color: '#64748B', fontStyle: 'italic' }}>No industry announcements.</Text>
-            </View>
-          )}
-        </ScrollView>
-
-        <View style={[styles.sectionHeader, { marginTop: 10 }]}>
-          <Text style={styles.sectionTitle}>Recommended Internships</Text>
-          <TouchableOpacity onPress={() => router.push("/jobs")}><Text style={styles.linkText}>See All</Text></TouchableOpacity>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.internshipScroll}>
-          {dashboardData.internshipsData.map((item: any) => (
-            <View key={item.id} style={[styles.internshipCard, { backgroundColor: item.bg }]}>
-              <View style={styles.internshipTopRow}>
-                <View style={styles.companyLogoPlaceholder}><Text style={styles.companyInitial}>{item.company.charAt(0)}</Text></View>
-                <View style={styles.typeBadge}><Text style={styles.typeBadgeText}>{item.type}</Text></View>
-              </View>
-              <Text style={styles.internshipTitle} numberOfLines={2}>{item.title}</Text>
-              <Text style={styles.internshipCompany} numberOfLines={1}>{item.company}</Text>
-              <TouchableOpacity style={styles.applyButton} activeOpacity={0.8} onPress={() => router.push("/jobs")}><Text style={styles.applyButtonText}>Apply Now</Text></TouchableOpacity>
-            </View>
-          ))}
-        </ScrollView>
+                  <Text style={styles.internshipTitle} numberOfLines={2}>{item.title}</Text>
+                  <Text style={styles.internshipCompany} numberOfLines={1}>{item.company}</Text>
+                  <TouchableOpacity style={styles.applyButton} activeOpacity={0.8} onPress={() => router.push("/jobs")}><Text style={styles.applyButtonText}>Apply Now</Text></TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          </>
+        )}
       </ScrollView>
 
       {/* --- SUBJECT MATERIALS MODAL --- */}
@@ -497,7 +551,7 @@ export default function StudentScreen() {
 
             <View style={styles.calendarWidget}>
               <View style={styles.calendarHeader}>
-                <FontAwesome6 name="chevron-left" size={14} color="#1E293B" /><Text style={styles.calendarMonth}>October 2023</Text><FontAwesome6 name="chevron-right" size={14} color="#1E293B" />
+                <FontAwesome6 name="chevron-left" size={14} color="#1E293B" /><Text style={styles.calendarMonth}>{calendarMonthName}</Text><FontAwesome6 name="chevron-right" size={14} color="#1E293B" />
               </View>
               <View style={styles.calendarGrid}>
                 {calendarDays.map((item, index) => (

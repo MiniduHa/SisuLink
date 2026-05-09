@@ -202,10 +202,9 @@ export default function ManageClasses() {
         </div>
         <select value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)} className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium text-sm">
           <option value="all">All Grades</option>
-          <option value="Grade 10">Grade 10</option>
-          <option value="Grade 11">Grade 11</option>
-          <option value="Grade 12">Grade 12</option>
-          <option value="Grade 13">Grade 13</option>
+          {Array.from({ length: 13 }, (_, i) => (
+            <option key={i + 1} value={`Grade ${i + 1}`}>Grade {i + 1}</option>
+          ))}
         </select>
       </div>
 
@@ -469,21 +468,33 @@ export default function ManageClasses() {
                     <div>
                       <label className="text-xs font-semibold text-slate-600 uppercase">Grade</label>
                       <select required value={formData.grade} onChange={e => setFormData({...formData, grade: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg mt-1 focus:ring-2 focus:ring-blue-100 text-slate-700">
-                        <option value="Grade 10">Grade 10</option>
-                        <option value="Grade 11">Grade 11</option>
-                        <option value="Grade 12">Grade 12</option>
-                        <option value="Grade 13">Grade 13</option>
+                        {Array.from({ length: 13 }, (_, i) => (
+                          <option key={i + 1} value={`Grade ${i + 1}`}>Grade {i + 1}</option>
+                        ))}
                       </select>
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-600 uppercase">Section</label>
                       <select required value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg mt-1 focus:ring-2 focus:ring-blue-100 text-slate-700">
                         <option value="" disabled>Select Section</option>
-                        <option value="O/L">O/L</option>
-                        <option value="Science Section">Science Section</option>
-                        <option value="Commerce Section">Commerce Section</option>
-                        <option value="Technology Section">Technology Section</option>
-                        <option value="Arts Section">Arts Section</option>
+                        {['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'].includes(formData.grade) && (
+                          <option value="Primary Section">Primary Section</option>
+                        )}
+                        {['Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'].includes(formData.grade) && (
+                          <option value="Junior Secondary Section">Junior Secondary Section</option>
+                        )}
+                        {['Grade 10', 'Grade 11'].includes(formData.grade) && (
+                          <option value="Senior Secondary (O/L)">Senior Secondary (O/L)</option>
+                        )}
+                        {['Grade 12', 'Grade 13'].includes(formData.grade) && (
+                          <>
+                            <option value="A/L - Physical Science">A/L - Physical Science</option>
+                            <option value="A/L - Biological Science">A/L - Biological Science</option>
+                            <option value="A/L - Commerce">A/L - Commerce</option>
+                            <option value="A/L - Technology">A/L - Technology</option>
+                            <option value="A/L - Arts">A/L - Arts</option>
+                          </>
+                        )}
                       </select>
                     </div>
                   </div>
@@ -491,7 +502,9 @@ export default function ManageClasses() {
                     <label className="text-xs font-semibold text-slate-600 uppercase">Class Teacher</label>
                     <select value={formData.classTeacherId} onChange={e => setFormData({...formData, classTeacherId: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg mt-1 focus:ring-2 focus:ring-blue-100 text-slate-700">
                       <option value="">-- None --</option>
-                      {teachers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+                      {teachers.filter(t => t.is_class_teacher).map(t => (
+                        <option key={t.id} value={t.id}>{t.full_name}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">

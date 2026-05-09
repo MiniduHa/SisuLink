@@ -162,10 +162,9 @@ export default function ManageNotices() {
           <option value="parents">Parents</option>
           <option value="students">Students</option>
           <option value="teacher">Teachers</option>
-          <option value="grade 10">Grade 10</option>
-          <option value="grade 11">Grade 11</option>
-          <option value="grade 12">Grade 12</option>
-          <option value="grade 13">Grade 13</option>
+          {Array.from({ length: 13 }, (_, i) => (
+            <option key={i + 1} value={`grade ${i + 1}`}>Grade {i + 1}</option>
+          ))}
         </select>
       </div>
 
@@ -357,10 +356,9 @@ export default function ManageNotices() {
                       <option value="All Students">All Students</option>
                       <option value="All Parents">All Parents</option>
                       <option value="Teaching Staff">Teaching Staff</option>
-                      <option value="Grade 10 Students">Grade 10 Students</option>
-                      <option value="Grade 11 Students">Grade 11 Students</option>
-                      <option value="Grade 12 Students">Grade 12 Students</option>
-                      <option value="Grade 13 Students">Grade 13 Students</option>
+                      {Array.from({ length: 13 }, (_, i) => (
+                        <option key={i + 1} value={`Grade ${i + 1} Students`}>Grade {i + 1} Students</option>
+                      ))}
                     </select>
                   </div>
 

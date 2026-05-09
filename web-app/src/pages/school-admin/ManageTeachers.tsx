@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react';
 import { Search, Plus, Mail, Phone, X, Users, BookOpen, CheckCircle, XCircle, Eye, UserCheck, Briefcase, AlertCircle, MessageSquare, Send, AlignLeft, CalendarDays, MapPin, Edit2 } from 'lucide-react';
 
 const subjectOptions: Record<string, string[]> = {
-  "O/L": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Religion", "ICT", "Business & Accounting"],
-  "Science Section": ["Combined Mathematics", "Biology", "Physics", "Chemistry", "Agriculture"],
-  "Commerce Section": ["Accounting", "Business Studies", "Economics", "ICT"],
-  "Technology Section": ["Engineering Technology (ET)", "Bio Systems Technology (BST)", "Science for Technology (SFT)", "ICT"],
-  "Arts Section": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science"]
+  "Primary Section": ["Primary Mathematics", "English", "Sinhala", "Tamil", "Environment", "Religion", "Art", "Dancing", "Music", "Physical Education"],
+  "Junior Secondary Section": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Geography", "Civic Education", "ICT", "Health", "Art", "Music", "Dancing", "PTS"],
+  "Senior Secondary (O/L)": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Religion", "Geography", "Civic Education", "ICT", "Business & Accounting", "Art", "Music", "Dancing", "Home Economics"],
+  "A/L - Physical Science": ["Combined Mathematics", "Physics", "Chemistry", "ICT", "GIT"],
+  "A/L - Biological Science": ["Biology", "Physics", "Chemistry", "Agricultural Science", "GIT"],
+  "A/L - Commerce": ["Accounting", "Business Studies", "Economics", "Business Statistics", "ICT", "GIT"],
+  "A/L - Technology": ["Engineering Technology (ET)", "Bio Systems Technology (BST)", "Science for Technology (SFT)", "ICT", "GIT"],
+  "A/L - Arts": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science", "Media Studies", "Economics", "Buddhist Civilization", "Christian Civilization", "Art", "Music", "Dancing", "GIT"]
 };
 
 // --- REAL TIMETABLE FORMATTER ---
@@ -259,6 +262,8 @@ export default function ManageTeachers() {
         </div>
         <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 text-slate-700 font-medium text-sm">
           <option value="all">All Sections</option>
+          <option value="primary (grade 1-5)">Primary (Grade 1-5)</option>
+          <option value="junior secondary (grade 6-9)">Junior Secondary (Grade 6-9)</option>
           <option value="o/l">O/L</option>
           <option value="science section">Science Section</option>
           <option value="commerce section">Commerce Section</option>

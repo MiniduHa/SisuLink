@@ -1,7 +1,23 @@
 import { Tabs } from "expo-router";
 import { FontAwesome6 } from "@expo/vector-icons";
+import { useState, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function TabsLayout() {
+  const [grade, setGrade] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchGrade = async () => {
+      const storedGrade = await AsyncStorage.getItem("studentGrade");
+      setGrade(storedGrade);
+    };
+    fetchGrade();
+  }, []);
+
+  const gradeMatch = grade?.match(/\d+/);
+  const gradeNum = gradeMatch ? parseInt(gradeMatch[0], 10) : 0;
+  const isIndustryVisible = gradeNum >= 10;
+
   return (
     <Tabs
       screenOptions={{
@@ -54,6 +70,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="jobs"
         options={{
+          href: isIndustryVisible ? undefined : null,
           title: "JOBS",
           tabBarIcon: ({ color }) => <FontAwesome6 name="briefcase" size={20} color={color} />,
         }}

@@ -23,11 +23,20 @@ exports.getSchoolDashboardStats = async (req, res) => {
       const industryCount = await db.query('SELECT COUNT(*) FROM industry_partners');
       totalIndustry = parseInt(industryCount.rows[0].count, 10);
       
+      const classCount = await db.query('SELECT COUNT(*) FROM classes WHERE school_id = $1', [schoolId]);
+      const totalClasses = parseInt(classCount.rows[0].count, 10);
+      
       const pendingJobsCount = await db.query("SELECT COUNT(*) FROM internships WHERE status = 'Pending'");
       const totalPendingJobs = parseInt(pendingJobsCount.rows[0].count, 10);
 
       res.json({
-        overallStats: { students: totalStudents, teachers: totalTeachers, parents: totalParents, industry: totalIndustry, classes: Math.floor(totalStudents / 30) || 0 },
+        overallStats: { 
+          students: totalStudents, 
+          teachers: totalTeachers, 
+          parents: totalParents, 
+          industry: totalIndustry, 
+          classes: totalClasses 
+        },
         dailyStats: { 
           studentAttendance: { present: 0, total: totalStudents, percentage: 0 }, 
           teacherAttendance: { present: 0, total: totalTeachers, percentage: 0 }, 

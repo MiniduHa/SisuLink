@@ -18,12 +18,27 @@ const SCHOOLS_API_URL = "http://172.20.10.7:5000/api/schools/list";
 
 // --- MATCHED DEPARTMENTS & SUBJECTS FROM WEB DASHBOARD ---
 const subjectOptions: Record<string, string[]> = {
-  "O/L": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Religion", "ICT", "Business & Accounting"],
-  "Science Section": ["Combined Mathematics", "Biology", "Physics", "Chemistry", "Agriculture"],
-  "Commerce Section": ["Accounting", "Business Studies", "Economics", "ICT"],
-  "Technology Section": ["Engineering Technology (ET)", "Bio Systems Technology (BST)", "Science for Technology (SFT)", "ICT"],
-  "Arts Section": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science"]
+  "Primary Section": ["Primary Mathematics", "English", "Sinhala", "Tamil", "Environment", "Religion", "Art", "Dancing", "Music", "Physical Education"],
+  "Junior Secondary Section": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Geography", "Civic Education", "ICT", "Health", "Art", "Music", "Dancing", "PTS"],
+  "Senior Secondary (O/L)": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Religion", "Geography", "Civic Education", "ICT", "Business & Accounting", "Art", "Music", "Dancing", "Home Economics"],
+  "A/L - Physical Science": ["Combined Mathematics", "Physics", "Chemistry", "ICT", "GIT"],
+  "A/L - Biological Science": ["Biology", "Physics", "Chemistry", "Agricultural Science", "GIT"],
+  "A/L - Commerce": ["Accounting", "Business Studies", "Economics", "Business Statistics", "ICT", "GIT"],
+  "A/L - Technology": ["Engineering Technology (ET)", "Bio Systems Technology (BST)", "Science for Technology (SFT)", "ICT", "GIT"],
+  "A/L - Arts": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science", "Media Studies", "Economics", "Buddhist Civilization", "Christian Civilization", "Art", "Music", "Dancing", "GIT"],
+  // Aliases for compatibility
+  "O/L": ["Mathematics", "Science", "English", "Sinhala", "Tamil", "History", "Religion", "Geography", "Civic Education", "ICT", "Business & Accounting", "Art", "Music", "Dancing", "Home Economics"],
+  "Science Section": ["Combined Mathematics", "Biology", "Physics", "Chemistry", "ICT", "GIT"],
+  "Commerce Section": ["Accounting", "Business Studies", "Economics", "Business Statistics", "ICT", "GIT"],
+  "Technology Section": ["Engineering Technology (ET)", "Bio Systems Technology (BST)", "Science for Technology (SFT)", "ICT", "GIT"],
+  "Arts Section": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science", "Media Studies", "Economics", "Buddhist Civilization", "Christian Civilization", "Art", "Music", "Dancing", "GIT"]
 };
+
+const olCoreSubjects = ["Sinhala", "Science", "Mathematics", "History", "English"];
+const olBucket1 = ["Dancing", "Art", "Music", "English Literature", "Sinhala Literature", "Drama"];
+const olBucket2 = ["Business and Accounting", "Geography", "Civic Education", "Tamil", "Second Language (Hindi/French)"];
+const olBucket3 = ["ICT", "Agriculture", "Health Education", "Home Economics"];
+const olReligions = ["Buddhism", "Hinduism", "Christianity", "Islam"];
 
 const CustomInput = ({ label, ...props }: any) => (
   <View style={styles.inputGroup}>
@@ -127,6 +142,11 @@ export default function SignupScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   const [childIds, setChildIds] = useState<string[]>([""]);
+  const [availableGrades, setAvailableGrades] = useState<string[]>([]);
+  const [availableRooms, setAvailableRooms] = useState<{room_number: string, section: string}[]>([]);
+  const [room, setRoom] = useState("");
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [olSelections, setOlSelections] = useState({ religion: '', b1: '', b2: '', b3: '' });
 
   // Fetch registered schools from backend when component mounts
   useEffect(() => {
@@ -143,6 +163,50 @@ export default function SignupScreen() {
     };
     fetchSchools();
   }, []);
+
+  // Fetch available grades when school is selected
+  useEffect(() => {
+    if (school) {
+      const fetchGrades = async () => {
+        try {
+          const response = await fetch(`http://172.20.10.7:5000/api/schools/${encodeURIComponent(school)}/grades`);
+          if (response.ok) {
+            const data = await response.json();
+            setAvailableGrades(data);
+          }
+        } catch (error) {
+          console.warn("⚠️ Grade list fetch failed.");
+        }
+      };
+      fetchGrades();
+    } else {
+      setAvailableGrades([]);
+      setGrade("");
+      setAvailableRooms([]);
+      setRoom("");
+    }
+  }, [school]);
+
+  // Fetch available rooms when grade is selected
+  useEffect(() => {
+    if (school && grade) {
+      const fetchRooms = async () => {
+        try {
+          const response = await fetch(`http://172.20.10.7:5000/api/schools/${encodeURIComponent(school)}/grades/${encodeURIComponent(grade)}/rooms`);
+          if (response.ok) {
+            const data = await response.json();
+            setAvailableRooms(data);
+          }
+        } catch (error) {
+          console.warn("⚠️ Room list fetch failed.");
+        }
+      };
+      fetchRooms();
+    } else {
+      setAvailableRooms([]);
+      setRoom("");
+    }
+  }, [school, grade]);
 
   const updateChildId = (text: string, index: number) => {
     const newIds = [...childIds];
@@ -200,8 +264,19 @@ export default function SignupScreen() {
         payload.first_name = firstName;
         payload.last_name = lastName;
         payload.grade_level = grade;
+        payload.section = room || department; 
         payload.index_number = studentId;
         payload.school_name = school; 
+        payload.medium = medium || "English";
+
+        // Compile Final Subjects Array
+        let finalSubjects = selectedSubjects;
+        if (department === "Senior Secondary (O/L)" || department === "O/L") {
+          finalSubjects = [...olCoreSubjects, olSelections.religion, olSelections.b1, olSelections.b2, olSelections.b3].filter(Boolean);
+        } else if (department.includes("A/L")) {
+          finalSubjects = ["General English", ...selectedSubjects];
+        }
+        payload.subjects = finalSubjects;
       } else if (role === "Parent") {
         payload.full_name = fullName;
         payload.phone_number = phone;
@@ -283,14 +358,134 @@ export default function SignupScreen() {
             </View>
             <CustomInput label="Email Address" placeholder="your@email.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
             <CustomInput label="Student ID / Index" placeholder="Enter your ID" value={studentId} onChangeText={setStudentId} />
-            <CustomInput label="Grade" placeholder="e.g. Grade 10" value={grade} onChangeText={setGrade} />
             
             <CustomDropdown 
               label="Registered School" 
               value={school} 
               options={schoolList} 
-              onSelect={setSchool} 
+              onSelect={(selectedSchool: string) => {
+                setSchool(selectedSchool);
+                setGrade(""); // Reset grade when school changes
+              }} 
             />
+
+            <CustomDropdown 
+              label="Select Grade" 
+              value={grade} 
+              options={availableGrades} 
+              onSelect={(val: string) => {
+                setGrade(val);
+                setRoom("");
+                setDepartment("");
+                setSelectedSubjects([]);
+              }} 
+            />
+
+            {availableRooms.length > 0 ? (
+              <CustomDropdown 
+                label="Class Room" 
+                value={room} 
+                options={availableRooms.map(r => r.room_number)} 
+                onSelect={(val: string) => {
+                  setRoom(val);
+                  const selectedRoomObj = availableRooms.find(r => r.room_number === val);
+                  if (selectedRoomObj) {
+                    setDepartment(selectedRoomObj.section);
+                    setSelectedSubjects([]);
+                  }
+                }} 
+              />
+            ) : grade ? (
+              <CustomDropdown 
+                label="Select Stream / Section" 
+                value={department} 
+                options={
+                  grade.match(/Grade [1-5]$/) ? ["Primary Section"] :
+                  grade.match(/Grade [6-9]$/) ? ["Junior Secondary Section"] :
+                  grade.match(/Grade 10|11/) ? ["Senior Secondary (O/L)", "O/L"] :
+                  ["A/L - Physical Science", "A/L - Biological Science", "A/L - Commerce", "A/L - Technology", "A/L - Arts", "Science Section", "Commerce Section", "Technology Section", "Arts Section"]
+                } 
+                onSelect={(val: string) => {
+                  setDepartment(val);
+                  setSelectedSubjects([]);
+                }} 
+              />
+            ) : null}
+
+            {grade && !grade.match(/Grade [1-5]$/) && (
+              <CustomDropdown 
+                label="Medium" 
+                value={medium} 
+                options={["Sinhala", "English", "Tamil"]} 
+                onSelect={setMedium} 
+              />
+            )}
+
+            {/* O/L SMART SUBJECT SELECTOR */}
+            {department && (department === "Senior Secondary (O/L)" || department === "O/L") && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>O/L Subject Selection</Text>
+                <View style={{backgroundColor: '#F1F5F9', padding: 12, borderRadius: 12, marginBottom: 12}}>
+                  <Text style={{fontSize: 10, fontWeight: 'bold', color: '#64748B', marginBottom: 4, textTransform: 'uppercase'}}>Core Subjects (Compulsory)</Text>
+                  <Text style={{fontSize: 12, color: '#334155'}}>{olCoreSubjects.join(", ")}</Text>
+                </View>
+                
+                <CustomDropdown 
+                  label="Religion" 
+                  value={olSelections.religion} 
+                  options={olReligions} 
+                  onSelect={(val: string) => setOlSelections({...olSelections, religion: val})} 
+                />
+                <CustomDropdown 
+                  label="Bucket 1 (Aesthetics / Lit)" 
+                  value={olSelections.b1} 
+                  options={olBucket1} 
+                  onSelect={(val: string) => setOlSelections({...olSelections, b1: val})} 
+                />
+                <CustomDropdown 
+                  label="Bucket 2 (Commerce / Geog)" 
+                  value={olSelections.b2} 
+                  options={olBucket2} 
+                  onSelect={(val: string) => setOlSelections({...olSelections, b2: val})} 
+                />
+                <CustomDropdown 
+                  label="Bucket 3 (Tech / Health)" 
+                  value={olSelections.b3} 
+                  options={olBucket3} 
+                  onSelect={(val: string) => setOlSelections({...olSelections, b3: val})} 
+                />
+              </View>
+            )}
+
+            {/* REGULAR SUBJECT ENROLLMENT (Primary, Junior, A/L) */}
+            {department && !department.match(/O\/L|Senior Secondary \(O\/L\)/) && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Subject Enrollment ({department})</Text>
+                {department.includes("A/L") && (
+                  <Text style={{fontSize: 10, color: '#64748B', marginBottom: 8}}>Select exactly 3 subjects. General English is included.</Text>
+                )}
+                <View style={styles.subjectGrid}>
+                  {subjectOptions[department]?.map((sub: string) => (
+                    <CustomCheckbox 
+                      key={sub} 
+                      label={sub} 
+                      isChecked={selectedSubjects.includes(sub)} 
+                      onChange={() => {
+                        if (selectedSubjects.includes(sub)) {
+                          setSelectedSubjects(selectedSubjects.filter(s => s !== sub));
+                        } else {
+                          if (department.includes("A/L") && selectedSubjects.length >= 3) {
+                            Alert.alert("Limit Reached", "A/L students select exactly 3 subjects.");
+                            return;
+                          }
+                          setSelectedSubjects([...selectedSubjects, sub]);
+                        }
+                      }} 
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
           </>
         )}
 
@@ -342,8 +537,31 @@ export default function SignupScreen() {
               onSelect={(selectedDept: string) => {
                 setDepartment(selectedDept);
                 setSubject(""); 
+                setSelectedSubjects([]); // Reset subjects if department changes
               }} 
             />
+
+            {department !== "" && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Teaching Section: <Text style={{color: '#2563EB'}}>{department}</Text></Text>
+                <View style={styles.subjectGrid}>
+                  {subjectOptions[department]?.map((sub: string) => (
+                    <CustomCheckbox 
+                      key={sub} 
+                      label={sub} 
+                      isChecked={selectedSubjects.includes(sub)} 
+                      onChange={() => {
+                        if (selectedSubjects.includes(sub)) {
+                          setSelectedSubjects(selectedSubjects.filter(s => s !== sub));
+                        } else {
+                          setSelectedSubjects([...selectedSubjects, sub]);
+                        }
+                      }} 
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
             
             {department ? (
               <CustomDropdown 
@@ -432,6 +650,7 @@ const styles = StyleSheet.create({
   dropdownItem: { paddingVertical: 12, paddingHorizontal: 16 },
   dropdownItemText: { fontSize: 14, color: "#64748B" },
   dropdownItemActive: { color: "#2563EB", fontWeight: "bold" },
+  subjectGrid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 },
   dynamicListContainer: { marginBottom: 8 },
   dynamicRow: { flexDirection: "row", alignItems: "flex-start" },
   removeButton: { padding: 16, backgroundColor: "#FEF2F2", borderRadius: 12, justifyContent: "center", alignItems: "center", marginLeft: 12, marginTop: 22, borderWidth: 1, borderColor: "#FECACA" },

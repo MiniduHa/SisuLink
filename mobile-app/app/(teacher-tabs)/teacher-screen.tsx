@@ -164,12 +164,39 @@ export default function TeacherDashboard() {
                 <Text style={styles.statValue}>{dashboardData.stats.totalClassesToday}</Text>
                 <Text style={styles.statLabel}>Classes Today</Text>
               </View>
-              <TouchableOpacity style={styles.statBox} activeOpacity={0.7} onPress={handleOpenStudentsModal}>
-                <View style={[styles.statIconBg, { backgroundColor: "#D1FAE5" }]}><FontAwesome6 name="users" size={16} color="#059669" /></View>
-                <Text style={styles.statValue}>{dashboardData.stats.totalStudents}</Text>
-                <Text style={styles.statLabel}>Total Students</Text>
-              </TouchableOpacity>
+              {dashboardData.teacher?.is_class_teacher && (
+                <TouchableOpacity style={styles.statBox} activeOpacity={0.7} onPress={handleOpenStudentsModal}>
+                  <View style={[styles.statIconBg, { backgroundColor: "#D1FAE5" }]}><FontAwesome6 name="users" size={16} color="#059669" /></View>
+                  <Text style={styles.statValue}>{dashboardData.stats.totalStudents}</Text>
+                  <Text style={styles.statLabel}>Total Students</Text>
+                </TouchableOpacity>
+              )}
             </View>
+
+            {/* CLASS TEACHER CONTROLS */}
+            {dashboardData.teacher?.is_class_teacher && (
+              <View style={styles.classTeacherSection}>
+                <Text style={styles.sectionTitleNew}>CLASS TEACHER CONTROLS</Text>
+                <TouchableOpacity 
+                  style={styles.markAttendanceCard}
+                  activeOpacity={0.8}
+                  onPress={() => router.push({ pathname: "/(teacher-tabs)/teacher-attendance", params: getNavParams() } as any)}
+                >
+                  <View style={styles.attendanceCardLeft}>
+                    <View style={styles.attendanceIconBg}>
+                      <FontAwesome6 name="clipboard-user" size={22} color="#FFFFFF" />
+                    </View>
+                    <View>
+                      <Text style={styles.attendanceCardTitle}>Mark Daily Attendance</Text>
+                      <Text style={styles.attendanceCardSub}>
+                        {dashboardData.teacher.managedClass ? `${dashboardData.teacher.managedClass.grade} - ${dashboardData.teacher.managedClass.section}` : "Your Class"}
+                      </Text>
+                    </View>
+                  </View>
+                  <FontAwesome6 name="chevron-right" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* TODAY'S SCHEDULE */}
             <View style={styles.sectionHeaderNew}>
@@ -297,7 +324,7 @@ export default function TeacherDashboard() {
             { icon: "home", label: "Home", route: "/(teacher-tabs)/teacher-screen" }, 
             { icon: "message-square", label: "Messages", route: "/(teacher-tabs)/teacher-messages" }, 
             { icon: "folder", label: "Materials", route: "/(teacher-tabs)/teacher-materials" },
-            { icon: "users", label: "Classes", route: null }, 
+            { icon: "users", label: "Attendance", route: dashboardData.teacher?.is_class_teacher ? "/(teacher-tabs)/teacher-attendance" : null }, 
             { icon: "calendar", label: "Calendar", route: "/(auth)/calendar" }, 
             { icon: "info", label: "About Us", route: "/(auth)/about-us" } 
           ].map((tab, index) => {
@@ -452,6 +479,14 @@ const styles = StyleSheet.create({
   sectionTitleNew: { fontSize: 13, fontWeight: "800", color: "#9CA3AF", letterSpacing: 0.5 },
   sectionLink: { fontSize: 13, color: "#2563EB", fontWeight: "600" },
   
+  // Class Teacher
+  classTeacherSection: { marginBottom: 25 },
+  markAttendanceCard: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#FFFFFF", padding: 16, borderRadius: 16, marginTop: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2, borderWidth: 1, borderColor: "#F1F5F9" },
+  attendanceCardLeft: { flexDirection: "row", alignItems: "center" },
+  attendanceIconBg: { width: 44, height: 44, borderRadius: 12, backgroundColor: "#2563EB", justifyContent: "center", alignItems: "center", marginRight: 15 },
+  attendanceCardTitle: { fontSize: 16, fontWeight: "bold", color: "#1E293B", marginBottom: 2 },
+  attendanceCardSub: { fontSize: 13, color: "#64748B", fontWeight: "500" },
+
   // Classes Horizontal Scroll
   switcherScroll: { paddingBottom: 10, overflow: 'visible', marginBottom: 15 },
   classCard: { backgroundColor: "#FFFFFF", padding: 20, borderRadius: 20, marginRight: 15, width: width * 0.65, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, borderWidth: 1, borderColor: "#F1F5F9" },
