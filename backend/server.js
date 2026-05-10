@@ -2164,6 +2164,160 @@ app.get('/api/parent/:email/dashboard', async (req, res) => {
   }
 });
 
+// Helper for ordinals (1st, 2nd, etc)
+const getOrdinal = (n) => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return (s[(v - 20) % 10] || s[v] || s[0]);
+};
+
+// ---> STUDENT ACADEMIC PROFILE FOR PARENTS <---
+app.get('/api/parent/student/:studentId/academic-profile', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    // 1. Fetch Student Details
+    const studentRes = await db.query(
+      'SELECT id, first_name, last_name, index_number, grade_level, section, profile_photo_url, school_id FROM students WHERE index_number = $1',
+      [studentId]
+    );
+    if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
+    const student = studentRes.rows[0];
+    const internalId = student.id;
+    const schoolId = student.school_id;
+
+    // 2. Attendance Stats
+    const attRes = await db.query(
+      'SELECT date, status FROM student_attendance WHERE student_id = $1 ORDER BY date DESC',
+      [internalId]
+    );
+    const presentCount = attRes.rows.filter(r => r.status === 'Present').length;
+    const totalCount = attRes.rows.length;
+    const attendancePercentage = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+    
+    // Format absent dates for calendar
+    const absentDates = attRes.rows
+      .filter(r => r.status === 'Absent')
+      .map(r => {
+        const d = new Date(r.date);
+        return d.toISOString().split('T')[0];
+      });
+
+    const presentDates = attRes.rows
+      .filter(r => r.status === 'Present')
+      .map(r => {
+        const d = new Date(r.date);
+        return d.toISOString().split('T')[0];
+      });
+
+    // 3. Teachers & Contacts
+    const teachersRes = await db.query(
+      `SELECT DISTINCT t.full_name as name, t.email, t.phone_number as phone, t.subject as role, t.is_class_teacher, t.id
+       FROM teachers t
+       JOIN classes c ON t.school_id = c.school_id
+       WHERE c.grade = $1 AND c.section = $2 AND c.school_id = $3
+       AND (t.is_class_teacher = true OR EXISTS (
+         SELECT 1 FROM class_timetables ct WHERE ct.teacher_id = t.id AND ct.class_id = c.id
+       ))`,
+       [student.grade_level, student.section, schoolId]
+    );
+
+    // 4. Timetable
+    const timetableRes = await db.query(
+      `SELECT ct.day_of_week as day, ct.time_slot as time, ct.subject, t.full_name as teacher
+       FROM class_timetables ct
+       JOIN classes c ON ct.class_id = c.id
+       LEFT JOIN teachers t ON ct.teacher_id = t.id
+       WHERE c.grade = $1 AND c.section = $2 AND c.school_id = $3
+       ORDER BY ct.time_slot ASC`,
+       [student.grade_level, student.section, schoolId]
+    );
+    
+    const timetable = {
+      "Mon": [], "Tue": [], "Wed": [], "Thu": [], "Fri": []
+    };
+    timetableRes.rows.forEach(row => {
+      const dayShort = row.day.substring(0, 3);
+      if (timetable[dayShort]) {
+        timetable[dayShort].push({
+          time: row.time,
+          subject: row.subject,
+          teacher: row.teacher || "TBD"
+        });
+      }
+    });
+
+    // 5. Grades & Class Average
+    const latestTermRes = await db.query(
+      'SELECT assessment_type FROM student_grades WHERE student_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [studentId]
+    );
+    const term = latestTermRes.rows.length > 0 ? latestTermRes.rows[0].assessment_type : "Current Term";
+
+    const gradesRes = await db.query(
+      `SELECT subject_name as name, marks, grade, remarks
+       FROM student_grades
+       WHERE student_id = $1 AND assessment_type = $2`,
+       [studentId, term]
+    );
+
+    const subjectsWithAvg = [];
+    for (let g of gradesRes.rows) {
+      const avgRes = await db.query(
+        'SELECT ROUND(AVG(marks), 1) as average FROM student_grades WHERE subject_name = $1 AND assessment_type = $2 AND school_id = $3',
+        [g.name, term, schoolId]
+      );
+      subjectsWithAvg.push({
+        name: g.name,
+        marks: parseFloat(g.marks),
+        grade: g.grade,
+        average: parseFloat(avgRes.rows[0].average) || 0
+      });
+    }
+
+    // 6. Rank calculation
+    const ranksRes = await db.query(
+      `SELECT student_id, SUM(marks) as total_marks
+       FROM student_grades sg
+       JOIN students s ON sg.student_id = s.index_number
+       WHERE s.grade_level = $1 AND s.section = $2 AND sg.assessment_type = $3 AND s.school_id = $4
+       GROUP BY student_id
+       ORDER BY total_marks DESC`,
+       [student.grade_level, student.section, term, schoolId]
+    );
+    
+    let rank = "N/A";
+    const totalStudentsInClass = ranksRes.rows.length;
+    const studentRankIndex = ranksRes.rows.findIndex(r => r.student_id === studentId);
+    if (studentRankIndex !== -1) {
+      rank = `${studentRankIndex + 1}${getOrdinal(studentRankIndex + 1)} out of ${totalStudentsInClass}`;
+    }
+
+    res.json({
+      student: {
+        name: `${student.first_name} ${student.last_name}`,
+        studentId: student.index_number,
+        grade: `${student.grade_level} - ${student.section}`,
+        avatarUrl: student.profile_photo_url,
+      },
+      academics: {
+        attendance: attendancePercentage,
+        absentDates,
+        presentDates,
+        rank,
+        term,
+        subjects: subjectsWithAvg,
+        behavior: gradesRes.rows.length > 0 ? gradesRes.rows[0].remarks : "Excellent conduct. Very active in class discussions."
+      },
+      teachers: teachersRes.rows,
+      timetable
+    });
+  } catch (error) {
+    console.error("Academic Profile Error:", error);
+    res.status(500).json({ error: "Server error fetching academic profile." });
+  }
+});
+
 // --- MESSAGING SYSTEM API ---
 
 // Send a message
@@ -2176,9 +2330,9 @@ app.post('/api/messages/send', async (req, res) => {
     }
 
     const result = await db.query(
-      `INSERT INTO messages (sender_email, sender_role, sender_name, receiver_email, receiver_role, content) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [sender_email, sender_role, sender_name, receiver_email, receiver_role, content]
+      `INSERT INTO messages (sender_email, sender_role, sender_name, receiver_email, receiver_role, subject, content) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [sender_email, sender_role, sender_name, receiver_email, receiver_role, req.body.subject || null, content]
     );
 
     res.status(201).json(result.rows[0]);
@@ -2194,23 +2348,29 @@ app.get('/api/messages/:role/:email', async (req, res) => {
     const { role, email } = req.params;
     const cleanEmail = email.toLowerCase().trim();
 
+    // 1. Fetch direct messages from 'messages' table
     const result = await db.query(
       `SELECT DISTINCT ON (other_email)
-         CASE WHEN sender_email = $1 THEN receiver_email ELSE sender_email END as other_email,
-         CASE WHEN sender_email = $1 THEN receiver_role ELSE sender_role END as other_role,
-         CASE WHEN sender_email = $1 THEN 'Me' ELSE sender_name END as last_sender_name,
+         CASE WHEN LOWER(sender_email) = $1 THEN LOWER(receiver_email) ELSE LOWER(sender_email) END as other_email,
+         CASE WHEN LOWER(sender_email) = $1 THEN receiver_role ELSE sender_role END as other_role,
+         CASE WHEN LOWER(sender_email) = $1 THEN 'Me' ELSE sender_name END as last_sender_name,
+         CASE WHEN LOWER(sender_email) = $1 THEN 
+           (SELECT first_name || ' ' || last_name FROM students WHERE LOWER(email) = LOWER(receiver_email) LIMIT 1) 
+           || (SELECT full_name FROM teachers WHERE LOWER(email) = LOWER(receiver_email) LIMIT 1)
+           || (SELECT full_name FROM parents WHERE LOWER(email) = LOWER(receiver_email) LIMIT 1)
+         ELSE sender_name END as other_person_name,
          content as snippet,
          created_at as time,
          is_read,
+         receiver_email,
          id
        FROM messages
-       WHERE sender_email = $1 OR receiver_email = $1
+       WHERE LOWER(sender_email) = $1 OR LOWER(receiver_email) = $1
        ORDER BY other_email, created_at DESC`,
       [cleanEmail]
     );
 
-    // Format the time for the frontend
-    const conversations = result.rows.map(row => {
+    let conversations = result.rows.map(row => {
       const dateObj = new Date(row.time);
       let timeStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const now = new Date();
@@ -2218,16 +2378,115 @@ app.get('/api/messages/:role/:email', async (req, res) => {
         timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       }
 
+      let displayName = row.other_person_name || row.other_email;
+      if (row.last_sender_name !== 'Me') {
+        displayName = row.last_sender_name;
+      }
+
       return {
         id: row.id,
         other_email: row.other_email,
         other_role: row.other_role,
-        sender: row.last_sender_name,
+        sender: displayName,
         time: timeStr,
         snippet: row.snippet,
-        unread: !row.is_read && row.other_email === row.other_email // Simple logic for unread
+        unread: !row.is_read && row.receiver_email.toLowerCase().trim() === cleanEmail
       };
     });
+
+    // 2. If the user is a student or parent, also fetch relevant broadcasts from 'internal_messages'
+    if (role === 'Student' || role === 'Parent') {
+      let school_id, grade_level, section;
+      
+      if (role === 'Student') {
+        const studentInfo = await db.query('SELECT school_id, grade_level, section FROM students WHERE LOWER(email) = $1', [cleanEmail]);
+        if (studentInfo.rows.length > 0) {
+          ({ school_id, grade_level, section } = studentInfo.rows[0]);
+        }
+      } else {
+        // For parent, get the first child's info (or all children's info)
+        // For simplicity, we fetch broadcasts for all children linked to this parent
+        const parentInfo = await db.query('SELECT child_student_ids FROM parents WHERE LOWER(email) = $1', [cleanEmail]);
+        if (parentInfo.rows.length > 0) {
+          const childIds = parentInfo.rows[0].child_student_ids;
+          if (childIds && childIds.length > 0) {
+            const childrenInfo = await db.query('SELECT school_id, grade_level, section FROM students WHERE index_number = ANY($1)', [childIds]);
+            if (childrenInfo.rows.length > 0) {
+               // We take the first child for now to get school context, 
+               // but we will fetch broadcasts matching ANY of their grades/sections
+               school_id = childrenInfo.rows[0].school_id;
+               const grades = childrenInfo.rows.map(c => c.grade_level);
+               const sections = childrenInfo.rows.map(c => c.section);
+               
+               const broadcasts = await db.query(
+                `SELECT * FROM internal_messages 
+                 WHERE school_id = $1 
+                 AND (
+                   recipient_type = 'all' 
+                   OR (recipient_type = 'grade' AND target_group = ANY($2))
+                   OR (recipient_type = 'section' AND target_group = ANY($3))
+                 )
+                 ORDER BY created_at DESC LIMIT 10`,
+                [school_id, grades, sections]
+              );
+
+              broadcasts.rows.forEach(b => {
+                const dateObj = new Date(b.created_at);
+                let timeStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const now = new Date();
+                if (dateObj.toDateString() === now.toDateString()) {
+                  timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                }
+
+                conversations.push({
+                  id: b.id + 1000000,
+                  other_email: 'admin@school.lk',
+                  other_role: 'SchoolAdmin',
+                  sender: b.sender_name || 'School Admin',
+                  time: timeStr,
+                  snippet: b.subject ? `Subject: ${b.subject}` : b.message_body,
+                  unread: false
+                });
+              });
+            }
+          }
+        }
+      }
+
+      if (role === 'Student' && school_id) {
+        const broadcasts = await db.query(
+          `SELECT * FROM internal_messages 
+           WHERE school_id = $1 
+           AND (
+             recipient_type = 'all' 
+             OR (recipient_type = 'grade' AND target_group = $2)
+             OR (recipient_type = 'section' AND target_group = $3)
+           )
+           ORDER BY created_at DESC LIMIT 10`,
+          [school_id, grade_level, section]
+        );
+
+        broadcasts.rows.forEach(b => {
+          const dateObj = new Date(b.created_at);
+          let timeStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const now = new Date();
+          if (dateObj.toDateString() === now.toDateString()) {
+            timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+
+          // Add broadcast as a message from 'School Admin'
+          conversations.push({
+            id: b.id + 1000000, // Offset to avoid ID collision
+            other_email: 'admin@school.lk',
+            other_role: 'SchoolAdmin',
+            sender: b.sender_name || 'School Admin',
+            time: timeStr,
+            snippet: b.message_body,
+            unread: false // Broadcasts are usually read-only
+          });
+        });
+      }
+    }
 
     res.json(conversations);
   } catch (error) {
@@ -2245,8 +2504,8 @@ app.get('/api/messages/:role/:email/history/:otherEmail', async (req, res) => {
 
     const result = await db.query(
       `SELECT * FROM messages 
-       WHERE (sender_email = $1 AND receiver_email = $2) 
-          OR (sender_email = $2 AND receiver_email = $1)
+       WHERE (LOWER(sender_email) = $1 AND LOWER(receiver_email) = $2) 
+          OR (LOWER(sender_email) = $2 AND LOWER(receiver_email) = $1)
        ORDER BY created_at ASC`,
       [cleanEmail, cleanOtherEmail]
     );
@@ -2283,14 +2542,26 @@ app.get('/api/parent/:email/contacts', async (req, res) => {
     const studentIds = parentRes.rows[0].child_student_ids;
     if (!studentIds || studentIds.length === 0) return res.json([]);
 
-    // 2. Get teachers assigned to those students' classes via timetables
+    // 2. Get teachers assigned to those students' classes (Subject teachers & Class teachers)
     const result = await db.query(
-      `SELECT DISTINCT t.full_name as name, t.email, t.subject as role, 'teacher' as type
-       FROM teachers t
-       INNER JOIN class_timetables ct ON t.id = ct.teacher_id
-       INNER JOIN classes c ON ct.class_id = c.id
-       INNER JOIN students s ON s.grade_level = c.grade AND s.section = c.section
-       WHERE s.index_number = ANY($1)`,
+      `SELECT DISTINCT id, name, email, role, type FROM (
+         -- Subject teachers from timetable
+         SELECT t.id, t.full_name as name, t.email, t.subject as role, 'teacher' as type
+         FROM teachers t
+         INNER JOIN class_timetables ct ON t.id = ct.teacher_id
+         INNER JOIN classes c ON ct.class_id = c.id
+         INNER JOIN students s ON s.grade_level = c.grade AND s.section = c.section AND s.school_id = c.school_id
+         WHERE s.index_number = ANY($1)
+         
+         UNION
+         
+         -- Class teachers
+         SELECT t.id, t.full_name as name, t.email, t.subject as role, 'teacher' as type
+         FROM teachers t
+         INNER JOIN classes c ON t.id = c.class_teacher_id
+         INNER JOIN students s ON s.grade_level = c.grade AND s.section = c.section AND s.school_id = c.school_id
+         WHERE s.index_number = ANY($1)
+       ) as all_teachers`,
       [studentIds]
     );
 
@@ -2312,42 +2583,44 @@ app.get('/api/teacher/:email/contacts', async (req, res) => {
     if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
     const teacherId = teacherRes.rows[0].id;
 
-    // 2. Get students taught by this teacher (via class_timetables)
+    // 2. Get students taught by this teacher (via timetables OR managed class)
     const studentsRes = await db.query(
-      `SELECT DISTINCT s.first_name || ' ' || s.last_name as name, s.email, s.grade_level || ' ' || s.section as role, 'student' as type
+      `SELECT DISTINCT 
+        s.first_name || ' ' || s.last_name as name, 
+        s.email, 
+        s.grade_level || ' ' || s.section as role, 
+        'student' as type,
+        s.index_number
        FROM students s
-       INNER JOIN classes c ON s.grade_level = c.grade AND s.section = c.section
-       INNER JOIN class_timetables ct ON ct.class_id = c.id
-       WHERE ct.teacher_id = $1`,
+       LEFT JOIN classes c_managed ON s.grade_level = c_managed.grade AND s.section = c_managed.section
+       LEFT JOIN class_timetables ct ON ct.class_id = (SELECT id FROM classes WHERE grade = s.grade_level AND section = s.section)
+       WHERE ct.teacher_id = $1 OR c_managed.class_teacher_id = $1`,
       [teacherId]
     );
 
     // 3. Get parents of THESE specific students
-    const taughtStudentIds = await db.query(
-      `SELECT DISTINCT s.index_number
-       FROM students s
-       INNER JOIN classes c ON s.grade_level = c.grade AND s.section = c.section
-       INNER JOIN class_timetables ct ON ct.class_id = c.id
-       WHERE ct.teacher_id = $1`,
-      [teacherId]
-    );
-
     let parents = [];
-    if (taughtStudentIds.rows.length > 0) {
-      const ids = taughtStudentIds.rows.map(r => r.index_number);
-      const parentsRes = await db.query(
-        `SELECT DISTINCT p.full_name as name, p.email, 'Parent' as role, 'parent' as type
-         FROM parents p
-         WHERE EXISTS (
-           SELECT 1 FROM unnest(p.child_student_ids) as cid 
-           WHERE cid = ANY($1)
-         )`,
-        [ids]
-      );
-      parents = parentsRes.rows;
+    if (studentsRes.rows.length > 0) {
+      const studentIndices = studentsRes.rows.map(s => s.index_number).filter(Boolean);
+      
+      if (studentIndices.length > 0) {
+        const parentsRes = await db.query(
+          `SELECT DISTINCT p.full_name as name, p.email, 'Parent' as role, 'parent' as type
+           FROM parents p
+           WHERE EXISTS (
+             SELECT 1 FROM unnest(p.child_student_ids) as cid 
+             WHERE cid = ANY($1)
+           )`,
+          [studentIndices]
+        );
+        parents = parentsRes.rows;
+      }
     }
 
-    res.json([...studentsRes.rows, ...parents]);
+    // Clean up student rows to remove index_number before sending to client
+    const students = studentsRes.rows.map(({ index_number, ...rest }) => rest);
+
+    res.json([...students, ...parents]);
   } catch (error) {
     console.error("Fetch Teacher Contacts Error:", error);
     res.status(500).json({ error: "Failed to fetch contacts." });
@@ -2568,6 +2841,10 @@ app.post('/api/teacher/attendance', async (req, res) => {
 
 // --- START THE SERVER ---
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`?? Server is running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

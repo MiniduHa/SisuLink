@@ -236,7 +236,7 @@ exports.sendStaffMessage = async (req, res) => {
     const { email } = req.params;
     const { recipientType, targetSection, targetTeacherId, targetGrade, targetStudentId, subject, messageBody } = req.body;
 
-    const schoolResult = await db.query('SELECT id, admin_name FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
+    const schoolResult = await db.query('SELECT id, admin_name, email as school_email FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     const school = schoolResult.rows[0];
 
@@ -245,11 +245,40 @@ exports.sendStaffMessage = async (req, res) => {
     if (recipientType === 'grade') targetGroup = targetGrade;
     if (recipientType === 'individual') targetGroup = targetTeacherId || targetStudentId;
 
+    // 1. Insert into internal_messages for audit and staff broadcast system
     const result = await db.query(
       `INSERT INTO internal_messages (school_id, sender_name, recipient_type, target_group, subject, message_body)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [school.id, school.admin_name || 'Admin', recipientType, targetGroup, subject, messageBody]
     );
+
+    // 2. If it's an individual student, also insert into the main 'messages' table 
+    // so it appears in their personal inbox/chat history AND the parent's inbox.
+    if (recipientType === 'individual' && targetStudentId) {
+      console.log(`[Messaging] Sending individual message to student ID: ${targetStudentId}`);
+      // Find student and parent emails by index_number
+      const studentRes = await db.query('SELECT email, parent_email FROM students WHERE index_number = $1 AND school_id = $2', [targetStudentId, school.id]);
+      
+      if (studentRes.rows.length > 0) {
+        const student = studentRes.rows[0];
+        const emailsToSend = [student.email, student.parent_email].filter(e => e && e !== 'N/A' && e.trim() !== '');
+        
+        console.log(`[Messaging] Found ${emailsToSend.length} valid recipient emails:`, emailsToSend);
+        
+        for (const targetEmail of emailsToSend) {
+          const role = targetEmail === student.email ? 'Student' : 'Parent';
+          const cleanTargetEmail = targetEmail.toLowerCase().trim();
+          
+          await db.query(
+            `INSERT INTO messages (sender_email, sender_role, sender_name, receiver_email, receiver_role, subject, content)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [school.school_email, 'SchoolAdmin', school.admin_name || 'Admin', cleanTargetEmail, role, subject, messageBody]
+          );
+        }
+      } else {
+        console.log(`[Messaging] No student found with ID: ${targetStudentId} for school ID: ${school.id}`);
+      }
+    }
 
     res.status(201).json({ message: "Message sent successfully!", data: result.rows[0] });
   } catch (error) {

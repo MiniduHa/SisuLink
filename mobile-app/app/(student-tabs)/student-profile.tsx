@@ -40,8 +40,10 @@ export default function StudentProfileScreen() {
 
   const [profilePhoto, setProfilePhoto] = useState<string | null>((params.profile_photo as string) || null);
 
+  const gradeNumber = parseInt(gradeLevel.replace(/[^0-9]/g, "")) || 0;
+  const isSecondary = gradeNumber >= 10;
+  const tabs = isSecondary ? ["About", "Resume"] : ["About"];
   const [activeTab, setActiveTab] = useState("About");
-  const tabs = ["About", "Resume"];
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -490,7 +492,7 @@ export default function StudentProfileScreen() {
           )}
 
           {/* TAB CONTENT: RESUME VIEW & EDIT */}
-          {activeTab === "Resume" && (
+          {activeTab === "Resume" && isSecondary && (
             <View style={styles.tabContent}>
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Professional Resume</Text>

@@ -130,10 +130,6 @@ export default function ParentDashboard() {
                 <Text style={styles.subtext}>Welcome back</Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.notificationButton}>
-              <Ionicons name="notifications-outline" size={26} color="#1E293B" />
-              <View style={styles.notificationBadge} />
-            </TouchableOpacity>
           </View>
 
           {activeChildId ? (
@@ -155,7 +151,7 @@ export default function ParentDashboard() {
                         if (isActive) {
                           router.push({
                             pathname: "/(parent-tabs)/child-details",
-                            params: { studentId: child.studentId, studentName: child.name, grade: child.class }
+                            params: { studentId: child.studentId, studentName: child.name, grade: child.class, parentEmail: userEmail, parentName: userName }
                           });
                         } else {
                           setActiveChildId(child.studentId);
@@ -182,7 +178,7 @@ export default function ParentDashboard() {
                     <TouchableOpacity onPress={() => {
                       if (!activeChildId) return;
                       const child = (dashboardData.children || []).find((c: any) => c.studentId === activeChildId);
-                      router.push({ pathname: "/(parent-tabs)/child-details", params: { studentId: activeChildId, studentName: child?.name || "Student", grade: child?.class || "", avatarUrl: "null" } })
+                      router.push({ pathname: "/(parent-tabs)/child-details", params: { studentId: activeChildId, studentName: child?.name || "Student", grade: child?.class || "", avatarUrl: "null", parentEmail: userEmail, parentName: userName } })
                     }}>
                       <Text style={styles.sectionLink}>Full Report</Text>
                     </TouchableOpacity>
@@ -242,52 +238,6 @@ export default function ParentDashboard() {
                 </View>
               ))}
 
-              {/* LATEST SCHOOL NEWS */}
-              <View style={styles.sectionHeaderNew}>
-                <Text style={styles.sectionTitleNew}>LATEST SCHOOL NEWS</Text>
-                <TouchableOpacity onPress={() => router.push("/(auth)/calendar")}>
-                  <Text style={styles.sectionLink}>View Calendar</Text>
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10, marginBottom: 20 }}>
-                {dashboardData.specialEvents && dashboardData.specialEvents.length > 0 ? (
-                  dashboardData.specialEvents.map((news: any) => (
-                    <TouchableOpacity key={news.id} style={[styles.gridCard, { width: width * 0.75, height: 160, marginRight: 15, padding: 0, overflow: 'hidden' }]} activeOpacity={0.9}>
-                      <ImageBackground source={{ uri: news.image }} style={{ width: "100%", height: "100%", justifyContent: "flex-end" }}>
-                        <View style={{ backgroundColor: "rgba(0,0,0,0.5)", padding: 15 }}>
-                          <Text style={{ color: "#E2E8F0", fontSize: 11, fontWeight: "600", marginBottom: 4 }}>{news.date}</Text>
-                          <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "bold" }} numberOfLines={2}>{news.title}</Text>
-                        </View>
-                      </ImageBackground>
-                    </TouchableOpacity>
-                  ))
-                ) : (
-                  <View style={[styles.gridCard, { width: width * 0.75, height: 160, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1F5F9' }]}>
-                    <Text style={{ color: '#64748B', fontStyle: 'italic' }}>No special events to display.</Text>
-                  </View>
-                )}
-              </ScrollView>
-
-              <View style={styles.gridRow}>
-                <View style={styles.gridCard}>
-                  <View style={styles.gridCardHeader}>
-                    <MaterialCommunityIcons name="calendar-month" size={24} color="#2563EB" />
-                    <Text style={styles.cardStatusLabel}>UPCOMING</Text>
-                  </View>
-                  <Text style={styles.eventDate}>OCT 20, 2026</Text>
-                  <Text style={styles.eventTitle}>PTA Meeting</Text>
-                </View>
-                <View style={styles.gridCard}>
-                  <View style={styles.gridCardHeader}>
-                    <MaterialCommunityIcons name="credit-card" size={24} color="#D97706" />
-                    <Text style={[styles.cardStatusLabel, { color: "#D97706" }]}>PENDING</Text>
-                  </View>
-                  <Text style={styles.paymentStatus}>Due in 5 days</Text>
-                  <Text style={styles.paymentAmount}>LKR 4,500.00</Text>
-                </View>
-              </View>
-
               <View style={styles.sectionHeaderNew}>
                 <Text style={styles.sectionTitleNew}>RECENT MESSAGES</Text>
                 <TouchableOpacity onPress={() => router.push({ pathname: "/(parent-tabs)/parent-messages", params: getNavParams() as any })}>
@@ -320,6 +270,33 @@ export default function ParentDashboard() {
                   <Text style={{ textAlign: 'center', color: '#94A3B8', marginTop: 10 }}>No recent messages</Text>
                 )}
               </View>
+
+              {/* LATEST SCHOOL NEWS (Moved to bottom) */}
+              <View style={styles.sectionHeaderNew}>
+                <Text style={styles.sectionTitleNew}>LATEST SCHOOL NEWS</Text>
+                <TouchableOpacity onPress={() => router.push("/(auth)/calendar")}>
+                  <Text style={styles.sectionLink}>View Calendar</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10, marginBottom: 20 }}>
+                {dashboardData.specialEvents && dashboardData.specialEvents.length > 0 ? (
+                  dashboardData.specialEvents.map((news: any) => (
+                    <TouchableOpacity key={news.id} style={[styles.gridCard, { width: width * 0.75, height: 160, marginRight: 15, padding: 0, overflow: 'hidden' }]} activeOpacity={0.9}>
+                      <ImageBackground source={{ uri: news.image }} style={{ width: "100%", height: "100%", justifyContent: "flex-end" }}>
+                        <View style={{ backgroundColor: "rgba(0,0,0,0.5)", padding: 15 }}>
+                          <Text style={{ color: "#E2E8F0", fontSize: 11, fontWeight: "600", marginBottom: 4 }}>{news.date}</Text>
+                          <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "bold" }} numberOfLines={2}>{news.title}</Text>
+                        </View>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={[styles.gridCard, { width: width * 0.75, height: 160, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1F5F9' }]}>
+                    <Text style={{ color: '#64748B', fontStyle: 'italic' }}>No special events to display.</Text>
+                  </View>
+                )}
+              </ScrollView>
 
             </View>
           ) : (

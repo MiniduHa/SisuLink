@@ -87,9 +87,12 @@ export default function ParentLoginScreen() {
               </TouchableOpacity>
 
               <View style={styles.logoContainer}>
-                <FontAwesome6 name="graduation-cap" size={36} color="#FFFFFF" />
+                <FontAwesome6 name="user-group" size={36} color="#FFFFFF" />
               </View>
-              <Text style={styles.appName}>SisuLink</Text>
+              <Text style={styles.appName}>
+                <Text style={{ color: "#1E40AF" }}>Sisu</Text>
+                <Text style={{ color: "#E0F2FE" }}>Link</Text>
+              </Text>
               <Text style={styles.tagline}>Connecting Education, Empowering Futures</Text>
             </View>
 
@@ -207,9 +210,8 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   appName: {
-    fontSize: 28,
+    fontSize: 34,
     fontWeight: "bold",
-    color: "#FFFFFF",
     marginBottom: 8,
   },
   tagline: {

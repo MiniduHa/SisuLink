@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Image } from "react-native";
 import { FontAwesome6, FontAwesome5 } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
@@ -43,8 +43,15 @@ export default function SelectionScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.headerRow}>
-        <FontAwesome6 name="graduation-cap" size={60} color="#2B8CEE" style={{ marginRight: 12 }} />
-        <Text style={styles.appName}>SisuLink</Text>
+        <Image 
+          source={require("../../assets/images/mainlogo.png")} 
+          style={{ width: 60, height: 60, marginRight: 12 }} 
+          resizeMode="contain" 
+        />
+        <Text style={styles.appName}>
+          <Text style={{ color: "#1E40AF" }}>Sisu</Text>
+          <Text style={{ color: "#3B82F6" }}>Link</Text>
+        </Text>
       </View>
 
       <Text style={styles.subHeading}>Welcome!</Text>
@@ -85,7 +92,7 @@ export default function SelectionScreen() {
 const styles = StyleSheet.create({
   container: { padding: 24, backgroundColor: "#FFFFFF", flexGrow: 1 },
   headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 16, marginTop: 38 },
-  appName: { fontSize: 34, fontWeight: "900", color: "#2B8CEE" },
+  appName: { fontSize: 42, fontWeight: "900" },
   subHeading: { fontSize: 32, fontWeight: "700", color: "#1E293B", marginBottom: 12, textAlign: "left" },
   description: { fontSize: 14, color: "#64748B", textAlign: "left", marginBottom: 24 },
   rolesContainer: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 24 },

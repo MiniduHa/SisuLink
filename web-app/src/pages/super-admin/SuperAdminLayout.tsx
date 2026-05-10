@@ -1,5 +1,6 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Building2, Settings, LogOut, GraduationCap } from 'lucide-react';
+import { LayoutDashboard, Building2, Settings, LogOut } from 'lucide-react';
+import mainLogo from '../../assets/mainlogo.png';
 
 export default function SuperAdminLayout() {
   const navigate = useNavigate();
@@ -23,10 +24,13 @@ export default function SuperAdminLayout() {
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex">
         <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-          <div className="bg-blue-600 p-2 rounded-lg">
-            <GraduationCap size={24} />
+          <div className="bg-white/10 p-1.5 rounded-lg">
+            <img src={mainLogo} alt="SisuLink Logo" className="w-8 h-8 object-contain" />
           </div>
-          <span className="text-xl font-bold tracking-wide">Super Admin</span>
+          <span className="text-xl font-black tracking-tight">
+            <span className="text-white">Sisu</span>
+            <span className="text-blue-400">Link</span>
+          </span>
         </div>
 
         <nav className="flex-1 py-6 px-3 flex flex-col gap-2">

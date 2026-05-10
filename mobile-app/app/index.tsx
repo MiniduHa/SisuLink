@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Dimensions } from "react-native";
-import { FontAwesome6 } from "@expo/vector-icons";
+import { View, Text, StyleSheet, Dimensions, Image } from "react-native";
 import { useRouter } from "expo-router";
 
 const { width } = Dimensions.get("window");
@@ -30,8 +29,15 @@ export default function LoadingScreen() {
     <View style={styles.container}>
       {/* Centered Logo & Text */}
       <View style={styles.centerContent}>
-        <FontAwesome6 name="graduation-cap" size={90} color="#2B8CEE" style={{ marginBottom: 20 }} />
-        <Text style={styles.appName}>SisuLink</Text>
+        <Image 
+          source={require("../assets/images/mainlogo.png")} 
+          style={{ width: 120, height: 120, marginBottom: 20 }} 
+          resizeMode="contain" 
+        />
+        <Text style={styles.appName}>
+          <Text style={{ color: "#1E40AF" }}>Sisu</Text>
+          <Text style={{ color: "#3B82F6" }}>Link</Text>
+        </Text>
         <Text style={styles.subHeading}>Empowering education through collaboration</Text>
       </View>
 
@@ -52,7 +58,7 @@ export default function LoadingScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 },
   centerContent: { alignItems: "center" },
-  appName: { fontSize: 26, fontWeight: "700", color: "#2B8CEE", textAlign: "center" },
+  appName: { fontSize: 36, fontWeight: "900", textAlign: "center" },
   subHeading: { fontSize: 14, color: "#64748B", textAlign: "center", marginTop: 8, maxWidth: 260 },
   loadingContainer: { position: "absolute", bottom: 80, width: width - 48 },
   loadingHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },

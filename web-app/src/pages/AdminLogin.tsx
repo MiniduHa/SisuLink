@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Lock, Mail, ShieldAlert } from 'lucide-react';
+import { Lock, Mail, ShieldAlert } from 'lucide-react';
+import mainLogo from '../assets/mainlogo.png';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');
@@ -54,10 +55,13 @@ export default function AdminLogin() {
       
       {/* Left Panel - Branding (Hidden on mobile) */}
       <div className="hidden md:flex flex-1 bg-blue-600 flex-col justify-center items-center text-white p-8">
-        <div className="bg-white/20 p-6 rounded-2xl mb-6">
-          <GraduationCap size={56} color="#FFFFFF" />
+        <div className="bg-white/20 p-4 rounded-2xl mb-6">
+          <img src={mainLogo} alt="SisuLink Logo" className="w-20 h-20 object-contain" />
         </div>
-        <h1 className="text-4xl font-bold mb-2">SisuLink</h1>
+        <h1 className="text-5xl font-black mb-2 tracking-tight">
+          <span className="text-white">Sisu</span>
+          <span className="text-blue-200">Link</span>
+        </h1>
         <p className="text-blue-100 text-lg">Unified Education Management System</p>
       </div>
 

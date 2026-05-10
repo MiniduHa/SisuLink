@@ -31,7 +31,13 @@ const subjectOptions: Record<string, string[]> = {
   "Science Section": ["Combined Mathematics", "Biology", "Physics", "Chemistry", "ICT", "GIT"],
   "Commerce Section": ["Accounting", "Business Studies", "Economics", "Business Statistics", "ICT", "GIT"],
   "Technology Section": ["Engineering Technology (ET)", "Bio Systems Technology (BST)", "Science for Technology (SFT)", "ICT", "GIT"],
-  "Arts Section": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science", "Media Studies", "Economics", "Buddhist Civilization", "Christian Civilization", "Art", "Music", "Dancing", "GIT"]
+  "Arts Section": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science", "Media Studies", "Economics", "Buddhist Civilization", "Christian Civilization", "Art", "Music", "Dancing", "GIT"],
+  "Physical Science": ["Combined Mathematics", "Physics", "Chemistry", "ICT", "GIT"],
+  "Biological Science": ["Biology", "Physics", "Chemistry", "Agricultural Science", "GIT"],
+  "Commerce": ["Accounting", "Business Studies", "Economics", "Business Statistics", "ICT", "GIT"],
+  "Technology": ["Engineering Technology (ET)", "Bio Systems Technology (BST)", "Science for Technology (SFT)", "ICT", "GIT"],
+  "Arts": ["Sinhala", "Tamil", "English", "Geography", "History", "Logic", "Political Science", "Media Studies", "Economics", "Buddhist Civilization", "Christian Civilization", "Art", "Music", "Dancing", "GIT"],
+  "Science": ["Combined Mathematics", "Biology", "Physics", "Chemistry", "ICT", "GIT"]
 };
 
 const olCoreSubjects = ["Sinhala", "Science", "Mathematics", "History", "English"];
@@ -208,6 +214,14 @@ export default function SignupScreen() {
     }
   }, [school, grade]);
 
+  useEffect(() => {
+    if (grade && availableRooms.length === 0) {
+      if (grade.match(/Grade [1-5]$/)) setDepartment("Primary Section");
+      else if (grade.match(/Grade [6-9]$/)) setDepartment("Junior Secondary Section");
+      else if (grade.match(/Grade 10|11/)) setDepartment("Senior Secondary (O/L)");
+    }
+  }, [grade, availableRooms]);
+
   const updateChildId = (text: string, index: number) => {
     const newIds = [...childIds];
     newIds[index] = text;
@@ -270,11 +284,23 @@ export default function SignupScreen() {
         payload.medium = medium || "English";
 
         // Compile Final Subjects Array
-        let finalSubjects = selectedSubjects;
-        if (department === "Senior Secondary (O/L)" || department === "O/L") {
+        let finalSubjects = [...selectedSubjects];
+        if (department === "Senior Secondary (O/L)" || department === "O/L" || department === "Senior Secondary") {
+          if (!olSelections.religion || !olSelections.b1 || !olSelections.b2 || !olSelections.b3) {
+            Alert.alert("Incomplete", "Please select all 9 subjects for O/L (6 Core + 3 Buckets).");
+            setIsLoading(false);
+            return;
+          }
           finalSubjects = [...olCoreSubjects, olSelections.religion, olSelections.b1, olSelections.b2, olSelections.b3].filter(Boolean);
-        } else if (department.includes("A/L")) {
-          finalSubjects = ["General English", ...selectedSubjects];
+        } else if (department.includes("A/L") || department.includes("Science") || department.includes("Commerce") || department.includes("Technology") || department.includes("Arts")) {
+          if (department.includes("A/L") && selectedSubjects.length < 3) {
+            Alert.alert("Incomplete", "A/L students must select exactly 3 subjects.");
+            setIsLoading(false);
+            return;
+          }
+          finalSubjects = ["General English", "GIT", ...selectedSubjects];
+        } else {
+          finalSubjects = selectedSubjects;
         }
         payload.subjects = finalSubjects;
       } else if (role === "Parent") {
@@ -402,8 +428,8 @@ export default function SignupScreen() {
                 options={
                   grade.match(/Grade [1-5]$/) ? ["Primary Section"] :
                   grade.match(/Grade [6-9]$/) ? ["Junior Secondary Section"] :
-                  grade.match(/Grade 10|11/) ? ["Senior Secondary (O/L)", "O/L"] :
-                  ["A/L - Physical Science", "A/L - Biological Science", "A/L - Commerce", "A/L - Technology", "A/L - Arts", "Science Section", "Commerce Section", "Technology Section", "Arts Section"]
+                  grade.match(/Grade 10|11/) ? ["Senior Secondary (O/L)"] :
+                  ["A/L - Physical Science", "A/L - Biological Science", "A/L - Commerce", "A/L - Technology", "A/L - Arts"]
                 } 
                 onSelect={(val: string) => {
                   setDepartment(val);
@@ -458,14 +484,16 @@ export default function SignupScreen() {
             )}
 
             {/* REGULAR SUBJECT ENROLLMENT (Primary, Junior, A/L) */}
-            {department && !department.match(/O\/L|Senior Secondary \(O\/L\)/) && (
+            {department && !department.includes("O/L") && (
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Subject Enrollment ({department})</Text>
-                {department.includes("A/L") && (
-                  <Text style={{fontSize: 10, color: '#64748B', marginBottom: 8}}>Select exactly 3 subjects. General English is included.</Text>
+                {(department.includes("A/L") || department.includes("Science") || department.includes("Commerce") || department.includes("Technology") || department.includes("Arts")) ? (
+                  <Text style={{fontSize: 10, color: '#64748B', marginBottom: 8}}>Select exactly 3 subjects. General English and GIT are included by default.</Text>
+                ) : (
+                  <Text style={{fontSize: 10, color: '#64748B', marginBottom: 8}}>Select the subjects you want to enroll in.</Text>
                 )}
                 <View style={styles.subjectGrid}>
-                  {subjectOptions[department]?.map((sub: string) => (
+                  {(subjectOptions[department] || []).map((sub: string) => (
                     <CustomCheckbox 
                       key={sub} 
                       label={sub} 
@@ -541,33 +569,11 @@ export default function SignupScreen() {
               }} 
             />
 
-            {department !== "" && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Teaching Section: <Text style={{color: '#2563EB'}}>{department}</Text></Text>
-                <View style={styles.subjectGrid}>
-                  {subjectOptions[department]?.map((sub: string) => (
-                    <CustomCheckbox 
-                      key={sub} 
-                      label={sub} 
-                      isChecked={selectedSubjects.includes(sub)} 
-                      onChange={() => {
-                        if (selectedSubjects.includes(sub)) {
-                          setSelectedSubjects(selectedSubjects.filter(s => s !== sub));
-                        } else {
-                          setSelectedSubjects([...selectedSubjects, sub]);
-                        }
-                      }} 
-                    />
-                  ))}
-                </View>
-              </View>
-            )}
-            
             {department ? (
               <CustomDropdown 
                 label="Teaching Subject" 
                 value={subject} 
-                options={subjectOptions[department]} 
+                options={subjectOptions[department] || []} 
                 onSelect={setSubject} 
               />
             ) : null}
@@ -656,10 +662,28 @@ const styles = StyleSheet.create({
   removeButton: { padding: 16, backgroundColor: "#FEF2F2", borderRadius: 12, justifyContent: "center", alignItems: "center", marginLeft: 12, marginTop: 22, borderWidth: 1, borderColor: "#FECACA" },
   addButton: { flexDirection: "row", alignItems: "center", paddingVertical: 8, marginBottom: 16 },
   addButtonText: { color: "#2563EB", fontSize: 14, fontWeight: "600", marginLeft: 8 },
-  checkboxContainer: { flexDirection: "row", alignItems: "center", marginBottom: 20, marginTop: 4 },
+  checkboxContainer: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    width: '50%', 
+    marginBottom: 16, 
+    paddingRight: 10 
+  },
   checkbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: "#CBD5E1", justifyContent: "center", alignItems: "center", marginRight: 10 },
   checkboxChecked: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
-  checkboxLabel: { fontSize: 13, color: "#475569", flex: 1 },
+  checkboxLabel: { fontSize: 13, color: '#475569' },
+  compulsoryPill: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#DCFCE7', 
+    paddingHorizontal: 10, 
+    paddingVertical: 6, 
+    borderRadius: 20, 
+    margin: 4,
+    borderWidth: 1,
+    borderColor: '#BBF7D0'
+  },
+  compulsoryText: { fontSize: 11, color: '#166534', fontWeight: '600', marginLeft: 6 },
   createButton: { backgroundColor: "#2563EB", paddingVertical: 16, borderRadius: 12, alignItems: "center", marginTop: 10 },
   createButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
   loginRow: { flexDirection: "row", justifyContent: "center", marginTop: 24 },

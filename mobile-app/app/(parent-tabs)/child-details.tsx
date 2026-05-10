@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   View, 
   Text, 
   StyleSheet, 
   ScrollView, 
   TouchableOpacity, 
-  Image 
+  Image,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -16,9 +17,11 @@ export default function ChildDetailsScreen() {
   const params = useLocalSearchParams();
 
   const studentId = params.studentId as string;
-  const studentName = params.studentName as string || "Student";
-  const grade = params.grade as string || "Grade N/A";
-  const avatarUrl = params.avatarUrl as string;
+  const initialStudentName = params.studentName as string || "Student";
+  const initialGrade = params.grade as string || "Grade N/A";
+  const initialAvatarUrl = params.avatarUrl as string;
+  const parentEmail = params.parentEmail as string;
+  const parentName = params.parentName as string;
 
   // --- STATE FOR INTERACTIVE FEATURES ---
   const [showCalendar, setShowCalendar] = useState(false);
@@ -28,45 +31,48 @@ export default function ChildDetailsScreen() {
   // NEW: State to track which teacher card is currently expanded
   const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
 
-  const fullReport = {
-    attendance: 92,
-    term: "Term 2 - 2023",
-    rank: "5th out of 40",
-    behavior: "Excellent conduct. Very active in class discussions.",
-    subjects: [
-      { name: "Mathematics", marks: 88, grade: "A", average: 65 },
-      { name: "Science", marks: 76, grade: "B", average: 60 },
-      { name: "English", marks: 92, grade: "A", average: 70 },
-      { name: "History", marks: 85, grade: "A", average: 68 },
-      { name: "ICT", marks: 95, grade: "A", average: 75 },
-    ],
-    extracurriculars: ["Under-15 Cricket Team", "Science Society"]
+  // NEW: Backend Data State
+  const [profileData, setProfileData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAcademicProfile();
+  }, [studentId]);
+
+  const fetchAcademicProfile = async () => {
+    try {
+      const timestamp = new Date().getTime();
+      // Using the same IP as other screens in the app
+      const response = await fetch(`http://172.20.10.7:5000/api/parent/student/${studentId}/academic-profile?t=${timestamp}`);
+      if (response.ok) {
+        const data = await response.json();
+        setProfileData(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch academic profile:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // NEW: Mock Teacher Data
-  const teachersList = [
-    { id: "t1", name: "Mrs. N. Silva", role: "Class Teacher & Science", email: "n.silva@sisulink.lk", phone: "+94 71 234 5678" },
-    { id: "t2", name: "Mr. K. Perera", role: "Mathematics", email: "k.perera@sisulink.lk", phone: "+94 77 987 6543" },
-    { id: "t3", name: "Ms. E. Fernando", role: "English", email: "e.fernando@sisulink.lk", phone: "+94 70 555 4444" },
-    { id: "t4", name: "Mr. S. Bandara", role: "History", email: "s.bandara@sisulink.lk", phone: "+94 78 111 2222" }
-  ];
+  // Use fetched data or fall back to params/mock
+  const studentName = profileData?.student?.name || initialStudentName;
+  const grade = profileData?.student?.grade || initialGrade;
+  const avatarUrl = profileData?.student?.avatarUrl || initialAvatarUrl;
 
-  const timetable: Record<string, { time: string, subject: string, teacher: string }[]> = {
-    "Mon": [
-      { time: "08:00 AM", subject: "Mathematics", teacher: "Mr. Perera" },
-      { time: "08:45 AM", subject: "Science", teacher: "Mrs. Silva" },
-      { time: "09:30 AM", subject: "English", teacher: "Ms. Fernando" },
-      { time: "10:45 AM", subject: "History", teacher: "Mr. Bandara" },
-    ],
-    "Tue": [
-      { time: "08:00 AM", subject: "English", teacher: "Ms. Fernando" },
-      { time: "08:45 AM", subject: "ICT", teacher: "Mr. Kumara" },
-      { time: "09:30 AM", subject: "Mathematics", teacher: "Mr. Perera" },
-      { time: "10:45 AM", subject: "Buddhism", teacher: "Rev. Thero" },
-    ],
-    "Wed": [{ time: "08:00 AM", subject: "Science", teacher: "Mrs. Silva" }, { time: "08:45 AM", subject: "Geography", teacher: "Mr. Dias" }],
-    "Thu": [{ time: "08:00 AM", subject: "History", teacher: "Mr. Bandara" }, { time: "08:45 AM", subject: "Mathematics", teacher: "Mr. Perera" }],
-    "Fri": [{ time: "08:00 AM", subject: "P.T.", teacher: "Mr. Jayasinghe" }, { time: "08:45 AM", subject: "ICT", teacher: "Mr. Kumara" }],
+  const fullReport = {
+    ...(profileData?.academics || {}),
+    attendance: profileData?.academics?.attendance || 0,
+    term: profileData?.academics?.term || "Current Term",
+    rank: profileData?.academics?.rank || "N/A",
+    behavior: profileData?.academics?.behavior || "No remarks available.",
+    subjects: profileData?.academics?.subjects || [],
+    extracurriculars: profileData?.academics?.extracurriculars || []
+  };
+
+  const teachersList = profileData?.teachers || [];
+  const timetable = profileData?.timetable || {
+    "Mon": [], "Tue": [], "Wed": [], "Thu": [], "Fri": []
   };
 
   const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri"];
@@ -108,31 +114,34 @@ export default function ChildDetailsScreen() {
         </View>
         
         <View style={styles.calendarGrid}>
-          {weekDays.map((day, idx) => (
+          {weekDays.map((day: string, idx: number) => (
             <View key={`header-${idx}`} style={styles.dayBoxWrapper}>
               <Text style={styles.weekDayText}>{day}</Text>
             </View>
           ))}
-          {emptySlots.map((_, idx) => (
+          {emptySlots.map((_: number, idx: number) => (
             <View key={`empty-${idx}`} style={styles.dayBoxWrapper} />
           ))}
-          {days.map((day) => {
+          {days.map((day: number) => {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const isAbsent = profileData?.academics?.absentDates?.includes(dateStr);
+            const isPresent = profileData?.academics?.presentDates?.includes(dateStr);
+            
             const dayOfWeek = (startingDayIndex + day - 1) % 7;
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; 
-            const isAbsent = !isWeekend && (day === 12 || day === 22); 
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
             let bgColor = "#FFFFFF";
             let textColor = "#1E293B";
 
-            if (isWeekend) {
-              bgColor = "#F8FAFC"; 
-              textColor = "#9CA3AF"; 
-            } else if (isAbsent) {
+            if (isAbsent) {
               bgColor = "#FEE2E2"; 
               textColor = "#EF4444"; 
-            } else {
+            } else if (isPresent) {
               bgColor = "#D1FAE5"; 
               textColor = "#059669"; 
+            } else if (isWeekend) {
+              bgColor = "#F8FAFC"; 
+              textColor = "#9CA3AF"; 
             }
 
             return (
@@ -205,7 +214,7 @@ export default function ChildDetailsScreen() {
         {/* === NEW TEACHERS SECTION === */}
         <Text style={styles.sectionTitle}>Teachers & Contacts</Text>
         <View style={styles.card}>
-          {teachersList.map((teacher, idx) => {
+          {teachersList.map((teacher: any, idx: number) => {
             const isExpanded = expandedTeacher === teacher.id;
             return (
               <View key={teacher.id}>
@@ -237,7 +246,22 @@ export default function ChildDetailsScreen() {
                       <Text style={styles.contactText}>{teacher.phone}</Text>
                     </View>
                     
-                    <TouchableOpacity style={styles.messageBtn}>
+                    <TouchableOpacity 
+                      style={styles.messageBtn}
+                      onPress={() => {
+                        router.push({
+                          pathname: "/(parent-tabs)/parent-messages",
+                          params: { 
+                            email: parentEmail, 
+                            full_name: parentName,
+                            targetEmail: teacher.email,
+                            targetName: teacher.name,
+                            targetRole: teacher.role,
+                            targetType: teacher.type || "teacher"
+                          } as any
+                        });
+                      }}
+                    >
                       <Feather name="message-square" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
                       <Text style={styles.messageBtnText}>Message Teacher</Text>
                     </TouchableOpacity>
@@ -253,7 +277,7 @@ export default function ChildDetailsScreen() {
         <Text style={styles.sectionTitle}>Class Timetable</Text>
         <View style={styles.card}>
           <View style={styles.daysTabsContainer}>
-            {daysOfWeek.map(day => (
+            {daysOfWeek.map((day: string) => (
               <TouchableOpacity 
                 key={day} 
                 style={[styles.dayTab, activeDay === day && styles.activeDayTab]}
@@ -265,7 +289,7 @@ export default function ChildDetailsScreen() {
           </View>
 
           <View style={styles.timetableList}>
-            {timetable[activeDay].map((lesson, idx) => (
+            {timetable[activeDay].map((lesson: any, idx: number) => (
               <View key={idx} style={styles.timelineRow}>
                 <View style={styles.timeColumn}>
                   <Text style={styles.timeText}>{lesson.time}</Text>
@@ -291,7 +315,7 @@ export default function ChildDetailsScreen() {
             <Text style={[styles.tableHeaderText, { flex: 1, textAlign: "right" }]}>Marks</Text>
           </View>
           
-          {fullReport.subjects.map((sub, idx) => (
+          {fullReport.subjects.map((sub: any, idx: number) => (
             <View key={idx} style={styles.tableRow}>
               <Text style={[styles.subjectName, { flex: 2 }]}>{sub.name}</Text>
               <Text style={[styles.classAvg, { flex: 1, textAlign: "center" }]}>{sub.average}%</Text>
@@ -311,16 +335,6 @@ export default function ChildDetailsScreen() {
             <MaterialCommunityIcons name="comment-quote-outline" size={24} color="#9CA3AF" style={{ marginRight: 10 }} />
             <Text style={styles.remarkText}>{fullReport.behavior}</Text>
           </View>
-        </View>
-
-        <Text style={styles.sectionTitle}>Extracurricular Activities</Text>
-        <View style={styles.card}>
-          {fullReport.extracurriculars.map((activity, idx) => (
-            <View key={idx} style={styles.activityRow}>
-              <View style={styles.bulletPoint} />
-              <Text style={styles.activityText}>{activity}</Text>
-            </View>
-          ))}
         </View>
 
       </ScrollView>

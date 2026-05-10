@@ -255,7 +255,7 @@ export default function StudentMessagesScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.inboxScrollContent}>
-          {messages.map((msg) => (
+          {filteredMessages.map((msg) => (
             <TouchableOpacity 
               key={msg.id} 
               style={[styles.messageCard, msg.unread && styles.messageCardUnread]} 

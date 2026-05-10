@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Building2, User, Mail, Phone, ArrowLeft, CheckCircle, Lock, Eye, EyeOff, LayoutGrid, Users } from 'lucide-react';
+import { Building2, User, Mail, Phone, ArrowLeft, CheckCircle, Lock, Eye, EyeOff, LayoutGrid, Users } from 'lucide-react';
+import mainLogo from '../assets/mainlogo.png';
 
 export default function SchoolRegistration() {
   const navigate = useNavigate();
@@ -47,8 +48,13 @@ export default function SchoolRegistration() {
   return (
     <div className="flex h-screen w-screen font-sans">
       <div className="hidden md:flex flex-1 bg-blue-600 flex-col justify-center items-center text-white p-8">
-        <div className="bg-white/20 p-6 rounded-2xl mb-6"><GraduationCap size={56} color="#FFFFFF" /></div>
-        <h1 className="text-4xl font-bold mb-2 text-center">Join SisuLink</h1>
+        <div className="bg-white/20 p-4 rounded-2xl mb-6">
+          <img src={mainLogo} alt="SisuLink Logo" className="w-20 h-20 object-contain" />
+        </div>
+        <h1 className="text-5xl font-black mb-2 text-center tracking-tight">
+          <span className="text-white">Join Sisu</span>
+          <span className="text-blue-200">Link</span>
+        </h1>
         <p className="text-blue-100 text-lg text-center max-w-md">Bring your institution into the future with our unified education management platform.</p>
       </div>
 

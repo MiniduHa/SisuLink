@@ -91,7 +91,10 @@ export default function StudentLoginScreen() {
               <View style={styles.logoContainer}>
                 <FontAwesome6 name="graduation-cap" size={36} color="#FFFFFF" />
               </View>
-              <Text style={styles.appName}>SisuLink</Text>
+              <Text style={styles.appName}>
+                <Text style={{ color: "#1E40AF" }}>Sisu</Text>
+                <Text style={{ color: "#E0F2FE" }}>Link</Text>
+              </Text>
               <Text style={styles.tagline}>Connecting Education, Empowering Futures</Text>
             </View>
 
@@ -182,7 +185,7 @@ const styles = StyleSheet.create({
   },
   backButton: { position: "absolute", top: 50, left: 24, padding: 8 },
   logoContainer: { width: 70, height: 70, backgroundColor: "rgba(255, 255, 255, 0.2)", borderRadius: 20, justifyContent: "center", alignItems: "center", marginBottom: 16, marginTop: 20 },
-  appName: { fontSize: 28, fontWeight: "bold", color: "#FFFFFF", marginBottom: 8 },
+  appName: { fontSize: 34, fontWeight: "bold", marginBottom: 8 },
   tagline: { fontSize: 12, color: "#E0F2FE", fontWeight: "500" },
   bottomCard: { 
     flex: 1, 

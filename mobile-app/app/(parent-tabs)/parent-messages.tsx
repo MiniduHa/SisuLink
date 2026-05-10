@@ -28,6 +28,7 @@ type Attachment = { uri: string, type: 'image' | 'document', name: string };
 type ChatMessage = {
   id: number;
   text: string;
+  subject?: string;
   sender: string;
   time: string;
   attachment?: Attachment | null;
@@ -100,6 +101,7 @@ export default function ParentMessagesScreen() {
         const formatted = data.map((m: any) => ({
           id: m.id,
           text: m.content,
+          subject: m.subject,
           sender: m.sender_email === userEmail ? "me" : "other",
           time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           attachment: null 
@@ -138,10 +140,14 @@ export default function ParentMessagesScreen() {
   }, [activeChat, viewingImage]);
 
 
-  // --- ACTIONS ---
+  const targetEmail = params.targetEmail as string;
+  const targetName = params.targetName as string;
+  const targetRole = params.targetRole as string;
+  const targetType = params.targetType as string;
+
   // FIXED: Changed signature to safely accept a single object!
   const handleOpenChat = (contact: any) => {
-    setMessages(messages.map(msg => msg.other_email === contact.email ? { ...msg, unread: false } : msg));
+    setMessages(messages.map((msg: any) => msg.other_email === contact.email ? { ...msg, unread: false } : msg));
     setContactModalVisible(false);
     setActiveChat({ 
       name: contact.name || contact.sender || "Unknown", 
@@ -151,6 +157,17 @@ export default function ParentMessagesScreen() {
     });
     fetchChatHistory(contact.email || contact.other_email);
   };
+
+  useEffect(() => {
+    if (targetEmail && targetName) {
+      handleOpenChat({
+        name: targetName,
+        role: targetRole || "Teacher",
+        type: targetType || "teacher",
+        email: targetEmail
+      });
+    }
+  }, [targetEmail, targetName]);
 
   const handleCloseChat = () => {
     setActiveChat(null);
@@ -255,7 +272,7 @@ export default function ParentMessagesScreen() {
     }
   };
 
-  const filteredMessages = messages.filter(msg => {
+  const filteredMessages = messages.filter((msg: any) => {
     const matchesFilter = activeFilter === "All" || (activeFilter === "Unread" && msg.unread);
     const nameMatch = (msg.sender || "").toLowerCase().includes(searchQuery.toLowerCase());
     const emailMatch = (msg.other_email || "").toLowerCase().includes(searchQuery.toLowerCase());
@@ -331,7 +348,7 @@ export default function ParentMessagesScreen() {
               <Text style={styles.emptyChatText}>No messages yet. Say hello!</Text>
             )}
 
-            {currentChatLog.map((msg) => {
+            {currentChatLog.map((msg: ChatMessage) => {
               const isMe = msg.sender === "me";
               return (
                 <View key={msg.id} style={[styles.messageBubbleWrapper, isMe ? styles.alignRight : styles.alignLeft]}>
@@ -352,6 +369,15 @@ export default function ParentMessagesScreen() {
                       </View>
                     )}
 
+                    {msg.subject && (
+                      <Text style={[
+                        styles.chatMessageText, 
+                        isMe ? styles.myText : styles.otherText, 
+                        { fontWeight: "bold", marginBottom: 6, fontSize: 16 }
+                      ]}>
+                        {msg.subject}
+                      </Text>
+                    )}
                     {msg.text.length > 0 && (
                       <Text style={[styles.chatMessageText, isMe ? styles.myText : styles.otherText, msg.attachment ? { marginTop: 8 } : {}]}>
                         {msg.text}
@@ -496,7 +522,7 @@ export default function ParentMessagesScreen() {
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.inboxScrollContent}>
           {filteredMessages.length > 0 ? (
-            filteredMessages.map((msg) => (
+            filteredMessages.map((msg: any) => (
               <TouchableOpacity 
                 key={msg.id} 
                 style={[styles.messageCard, msg.unread && styles.messageCardUnread]} 
@@ -552,7 +578,7 @@ export default function ParentMessagesScreen() {
               <Text style={styles.modalSubtitle}>Select a teacher to start chatting</Text>
               
               <ScrollView showsVerticalScrollIndicator={false}>
-                {availableContacts.map(contact => (
+                {availableContacts.map((contact: any) => (
                   <TouchableOpacity 
                     key={contact.id} 
                     style={styles.contactRow}
