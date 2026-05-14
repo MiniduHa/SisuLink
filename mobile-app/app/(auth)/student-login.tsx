@@ -47,8 +47,15 @@ export default function StudentLoginScreen() {
       const data = await response.json();
       if (response.ok) {
         // Save to AsyncStorage for global access (e.g. hiding tabs)
+        await AsyncStorage.setItem('userToken', data.token);
         await AsyncStorage.setItem('studentGrade', data.student.grade_level);
         await AsyncStorage.setItem('studentEmail', data.student.email);
+        
+        const idToSave = data.student.index_number || data.student.studentId || '';
+        console.log("Saving studentId to AsyncStorage:", idToSave);
+        await AsyncStorage.setItem('studentId', idToSave);
+        
+        await AsyncStorage.setItem('studentName', `${data.student.first_name} ${data.student.last_name}`);
 
         router.replace({
           pathname: "/(student-tabs)/student-screen",

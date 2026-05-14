@@ -22,6 +22,28 @@ import ManageNotices from './pages/school-admin/ManageNotices';
 import ManageParents from './pages/school-admin/ManageParents';
 import IndustryApprovals from './pages/school-admin/IndustryApprovals';
 
+// --- GLOBAL FETCH INTERCEPTOR ---
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+  const [resource, config] = args;
+  
+  if (typeof resource === 'string' && resource.includes('/api/')) {
+    const token = localStorage.getItem('sisuLinkToken');
+    if (token) {
+      const currentHeaders = config?.headers || {};
+      const newConfig = {
+        ...config,
+        headers: {
+          ...currentHeaders,
+          'Authorization': `Bearer ${token}`
+        }
+      };
+      return originalFetch(resource, newConfig as RequestInit);
+    }
+  }
+  return originalFetch(...args);
+};
+
 function App() {
   return (
     <Router>

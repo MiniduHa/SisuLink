@@ -8,10 +8,12 @@ import {
   TextInput,
   Modal,
   Platform,
-  Alert
+  Alert,
+  Image
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import WatermarkOverlay from "../../components/WatermarkOverlay";
 
 
@@ -27,10 +29,44 @@ export default function JobsScreen() {
 
   const [jobsData, setJobsData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [studentDetails, setStudentDetails] = useState<any>(null);
 
   React.useEffect(() => {
     fetchJobs();
+    fetchStudentDetails();
   }, []);
+
+  const fetchStudentDetails = async () => {
+    try {
+      let studentId = await AsyncStorage.getItem("studentId");
+      let email = await AsyncStorage.getItem("studentEmail");
+      
+      console.log("fetchStudentDetails - studentId:", studentId, "email:", email);
+
+      if (studentId) {
+        const response = await fetch(`http://172.20.10.7:5000/api/profile/${studentId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setStudentDetails(data);
+          return;
+        }
+      } 
+      
+      if (email) {
+        const response = await fetch(`http://172.20.10.7:5000/api/student/profile-by-email/${email}`);
+        if (response.ok) {
+          const data = await response.json();
+          setStudentDetails(data);
+          // If we found it by email, let's also save the studentId for next time
+          if (data.index_number) {
+            await AsyncStorage.setItem("studentId", data.index_number);
+          }
+        }
+      }
+    } catch (e) {
+      console.log("fetchStudentDetails error:", e);
+    }
+  };
 
   const fetchJobs = async () => {
     try {
@@ -41,6 +77,7 @@ export default function JobsScreen() {
           ...job,
           industry: job.industry_type || "General", // Mapping backend field if different
           logoColor: job.bg_color || "#3B82F6",
+          logoUrl: job.logo_url || null,
           postedAt: "Recently" // Simplifying for now
         })));
       }
@@ -65,13 +102,99 @@ export default function JobsScreen() {
     setJobModalVisible(true);
   };
 
-  const handleApply = () => {
-    // In a real app, this would send an API request to submit the student's resume
-    Alert.alert(
-      "Application Submitted! 🎉", 
-      `Your profile and resume have been sent to ${selectedJob?.company}. Good luck!`,
-      [{ text: "OK", onPress: () => setJobModalVisible(false) }]
-    );
+  const handleApply = async () => {
+    if (!selectedJob) return;
+
+    let currentDetails = studentDetails;
+
+    if (!currentDetails) {
+      // Try fetching one last time before giving up
+      let studentId = await AsyncStorage.getItem("studentId");
+      let email = await AsyncStorage.getItem("studentEmail");
+      
+      console.log("handleApply retry - studentId:", studentId, "email:", email);
+      
+      if (studentId || email) {
+        try {
+          const url = studentId 
+            ? `http://172.20.10.7:5000/api/profile/${studentId}`
+            : `http://172.20.10.7:5000/api/student/profile-by-email/${email}`;
+            
+          const response = await fetch(url);
+          if (response.ok) {
+            currentDetails = await response.json();
+            setStudentDetails(currentDetails);
+            if (currentDetails.index_number) {
+              await AsyncStorage.setItem("studentId", currentDetails.index_number);
+            }
+          } else {
+            const errorText = await response.text();
+            console.log(`Profile fetch failed with status ${response.status}:`, errorText);
+            Alert.alert("Error", `Could not fetch your profile (Status ${response.status}). Please contact support.`);
+            return;
+          }
+        } catch (e) {
+          console.log("Retry fetch profile network error:", e);
+          Alert.alert("Network Error", "Could not connect to the server to fetch your profile.");
+          return;
+        }
+      } else {
+        Alert.alert(
+          "Profile Missing", 
+          "We couldn't find your student credentials in local storage. Please log out and log back in to refresh your session.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+    }
+
+    if (!currentDetails) {
+      Alert.alert("Error", "Could not fetch your profile. Please check your internet connection and try again.");
+      return;
+    }
+
+    const { index_number, first_name, last_name, email, resume_url, industry_resumes } = currentDetails;
+    
+    // Determine which resume to use
+    let cvUrl = resume_url;
+    if (industry_resumes && industry_resumes[selectedJob.industry]) {
+      cvUrl = industry_resumes[selectedJob.industry];
+    }
+
+    if (!cvUrl) {
+      Alert.alert(
+        "Resume Required", 
+        "You haven't uploaded a resume yet. Please go to your Profile to upload one before applying.",
+        [{ text: "OK", onPress: () => setJobModalVisible(false) }]
+      );
+      return;
+    }
+
+    try {
+      const response = await fetch("http://172.20.10.7:5000/api/student/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_id: selectedJob.id,
+          student_id: index_number,
+          student_name: `${first_name} ${last_name}`,
+          student_email: email,
+          cv_url: cvUrl
+        })
+      });
+
+      if (response.ok) {
+        Alert.alert(
+          "Application Submitted! 🎉", 
+          `Your resume for the ${selectedJob.industry} industry has been sent to ${selectedJob.company_name}. Good luck!`,
+          [{ text: "OK", onPress: () => setJobModalVisible(false) }]
+        );
+      } else {
+        Alert.alert("Error", "Failed to submit application.");
+      }
+    } catch (error) {
+      Alert.alert("Error", "Network error. Please try again later.");
+    }
   };
 
   return (
@@ -139,9 +262,13 @@ export default function JobsScreen() {
                 onPress={() => openJobDetails(job)}
               >
                 <View style={styles.jobCardHeader}>
-                  <View style={[styles.companyLogo, { backgroundColor: job.logoColor }]}>
-                    <Text style={styles.companyLogoText}>{job.company_name.charAt(0)}</Text>
-                  </View>
+                  {job.logoUrl ? (
+                    <Image source={{ uri: job.logoUrl }} style={styles.companyLogo} />
+                  ) : (
+                    <View style={[styles.companyLogo, { backgroundColor: job.logoColor }]}>
+                      <Text style={styles.companyLogoText}>{job.company_name.charAt(0)}</Text>
+                    </View>
+                  )}
                   <View style={styles.jobCardInfo}>
                     <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
                     <Text style={styles.jobCompany}>{job.company_name}</Text>
@@ -197,9 +324,13 @@ export default function JobsScreen() {
             
             {/* Job Header Info */}
             <View style={styles.modalJobHeader}>
-              <View style={[styles.modalCompanyLogo, { backgroundColor: selectedJob?.logoColor || '#3B82F6' }]}>
-                <Text style={styles.modalCompanyLogoText}>{selectedJob?.company_name?.charAt(0)}</Text>
-              </View>
+              {selectedJob?.logoUrl ? (
+                <Image source={{ uri: selectedJob.logoUrl }} style={styles.modalCompanyLogo} />
+              ) : (
+                <View style={[styles.modalCompanyLogo, { backgroundColor: selectedJob?.logoColor || '#3B82F6' }]}>
+                  <Text style={styles.modalCompanyLogoText}>{selectedJob?.company_name?.charAt(0)}</Text>
+                </View>
+              )}
               <Text style={styles.modalJobTitle}>{selectedJob?.title}</Text>
               <Text style={styles.modalJobCompany}>{selectedJob?.company_name}</Text>
               

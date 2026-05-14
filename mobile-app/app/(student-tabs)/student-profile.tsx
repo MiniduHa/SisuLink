@@ -74,6 +74,9 @@ export default function StudentProfileScreen() {
 
   // Resume State
   const [resumeUrl, setResumeUrl] = useState("");
+  const [industryResumes, setIndustryResumes] = useState<any>({});
+  const [selectedResumeIndustry, setSelectedResumeIndustry] = useState("All");
+  const industryOptions = ["All", "IT/Software", "Design", "Marketing", "Business", "Engineering"];
 
   // --- FETCH DATA ON MOUNT ---
   const fetchProfile = useCallback(async () => {
@@ -107,6 +110,7 @@ export default function StudentProfileScreen() {
         setOlResults(data.ol_results || []);
         setIsOLCompleted(!!data.ol_school);
         setResumeUrl(data.resume_url || "");
+        setIndustryResumes(data.industry_resumes || {});
       }
     } catch (error) {
       console.error("Failed to fetch profile:", error);
@@ -204,6 +208,7 @@ export default function StudentProfileScreen() {
           type: file.mimeType || 'application/pdf',
         } as any);
         formData.append('studentId', studentId);
+        formData.append('industry', selectedResumeIndustry);
 
         const res = await fetch("http://172.20.10.7:5000/api/profile/upload-resume", {
           method: "POST",
@@ -212,7 +217,11 @@ export default function StudentProfileScreen() {
 
         if (res.ok) {
           const data = await res.json();
-          setResumeUrl(data.resumeUrl);
+          if (selectedResumeIndustry === 'All') {
+            setResumeUrl(data.resumeUrl);
+          } else {
+            setIndustryResumes((prev: any) => ({ ...prev, [selectedResumeIndustry]: data.resumeUrl }));
+          }
           Alert.alert("Success", "Resume uploaded successfully!");
         } else {
           Alert.alert("Error", "Failed to upload resume.");
@@ -238,10 +247,18 @@ export default function StudentProfileScreen() {
             const res = await fetch("http://172.20.10.7:5000/api/profile/remove-resume", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ studentId })
+              body: JSON.stringify({ studentId, industry: selectedResumeIndustry })
             });
             if (res.ok) {
-              setResumeUrl("");
+              if (selectedResumeIndustry === 'All') {
+                setResumeUrl("");
+              } else {
+                setIndustryResumes((prev: any) => {
+                  const updated = { ...prev };
+                  delete updated[selectedResumeIndustry];
+                  return updated;
+                });
+              }
               Alert.alert("Success", "Resume removed.");
             }
           } catch (err) {
@@ -255,8 +272,9 @@ export default function StudentProfileScreen() {
   };
 
   const handleViewResume = async () => {
-    if (resumeUrl) {
-      await WebBrowser.openBrowserAsync(resumeUrl);
+    const url = selectedResumeIndustry === 'All' ? resumeUrl : industryResumes[selectedResumeIndustry];
+    if (url) {
+      await WebBrowser.openBrowserAsync(url);
     }
   };
 
@@ -494,17 +512,48 @@ export default function StudentProfileScreen() {
           {/* TAB CONTENT: RESUME VIEW & EDIT */}
           {activeTab === "Resume" && isSecondary && (
             <View style={styles.tabContent}>
+              
+              {/* Industry Selector */}
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.sectionDividerTitle}>Select Industry</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {industryOptions.map((ind) => (
+                    <TouchableOpacity
+                      key={ind}
+                      style={[
+                        styles.resumeIndustryChip, 
+                        selectedResumeIndustry === ind && styles.resumeIndustryChipActive
+                      ]}
+                      onPress={() => setSelectedResumeIndustry(ind)}
+                    >
+                      <Text style={[
+                        styles.resumeIndustryText, 
+                        selectedResumeIndustry === ind && styles.resumeIndustryTextActive
+                      ]}>
+                        {ind}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>Professional Resume</Text>
-                <Text style={styles.cardSubtitle}>Upload your resume to showcase your skills and achievements to the school and potential future opportunities.</Text>
+                <Text style={styles.cardTitle}>{selectedResumeIndustry === 'All' ? 'General Resume' : `${selectedResumeIndustry} Resume`}</Text>
+                <Text style={styles.cardSubtitle}>
+                  {selectedResumeIndustry === 'All' 
+                    ? "Upload your general resume to showcase your skills and achievements."
+                    : `Upload a tailored resume for the ${selectedResumeIndustry} industry.`}
+                </Text>
                 
-                {resumeUrl ? (
+                {(selectedResumeIndustry === 'All' ? resumeUrl : industryResumes[selectedResumeIndustry]) ? (
                   <View style={styles.resumeContainer}>
                     <View style={styles.resumeFileIcon}>
                       <MaterialCommunityIcons name="file-pdf-box" size={40} color="#EF4444" />
                     </View>
                     <View style={styles.resumeFileInfo}>
-                      <Text style={styles.resumeFileName} numberOfLines={1}>Student_Resume.pdf</Text>
+                      <Text style={styles.resumeFileName} numberOfLines={1}>
+                        {selectedResumeIndustry === 'All' ? 'Student_Resume.pdf' : `${selectedResumeIndustry.replace(/[^a-zA-Z0-9]/g, '')}_Resume.pdf`}
+                      </Text>
                       <Text style={styles.resumeFileStatus}>Uploaded and active</Text>
                     </View>
                     <TouchableOpacity style={styles.viewResumeBtn} onPress={handleViewResume}>
@@ -518,7 +567,7 @@ export default function StudentProfileScreen() {
                   </View>
                 )}
 
-                {!isEditing && !resumeUrl && (
+                {!isEditing && !(selectedResumeIndustry === 'All' ? resumeUrl : industryResumes[selectedResumeIndustry]) && (
                   <View style={styles.resumeInfoBox}>
                     <Feather name="info" size={14} color="#64748B" style={{ marginRight: 6 }} />
                     <Text style={styles.resumeInfoText}>Switch to edit mode to upload your resume.</Text>
@@ -527,7 +576,7 @@ export default function StudentProfileScreen() {
 
                 {isEditing && (
                   <View style={styles.resumeActionContainer}>
-                    {resumeUrl ? (
+                    {(selectedResumeIndustry === 'All' ? resumeUrl : industryResumes[selectedResumeIndustry]) ? (
                       <TouchableOpacity style={styles.deleteResumeBtn} onPress={handleRemoveResume}>
                         <Feather name="trash-2" size={16} color="#EF4444" style={{ marginRight: 8 }} />
                         <Text style={styles.deleteResumeBtnText}>Delete and Re-upload</Text>
@@ -631,5 +680,9 @@ const styles = StyleSheet.create({
   uploadResumeBtn: { backgroundColor: "#2563EB", flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12 },
   uploadResumeBtnText: { color: "#FFFFFF", fontSize: 15, fontWeight: "bold" },
   deleteResumeBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2" },
-  deleteResumeBtnText: { color: "#EF4444", fontSize: 14, fontWeight: "600" }
+  deleteResumeBtnText: { color: "#EF4444", fontSize: 14, fontWeight: "600" },
+  resumeIndustryChip: { backgroundColor: "#F1F5F9", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: "transparent" },
+  resumeIndustryChipActive: { backgroundColor: "#DBEAFE", borderColor: "#3B82F6" },
+  resumeIndustryText: { fontSize: 13, color: "#64748B", fontWeight: "500" },
+  resumeIndustryTextActive: { color: "#2563EB", fontWeight: "bold" }
 });

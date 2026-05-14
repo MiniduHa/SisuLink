@@ -16,6 +16,7 @@ import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/v
 import WatermarkOverlay from "../../components/WatermarkOverlay";
 
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width } = Dimensions.get("window");
 
@@ -72,10 +73,14 @@ export default function StudentScreen() {
         setIsLoading(true);
         try {
           const timestamp = new Date().getTime();
-          const profileRes = fetch(`http://172.20.10.7:5000/api/profile/${studentId}?t=${timestamp}`);
-          const dashboardRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/dashboard?t=${timestamp}`);
-          const materialsRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/materials?t=${timestamp}`);
-          const historyRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/attendance-history?t=${timestamp}`);
+          const headers = { 
+            "Content-Type": "application/json"
+          };
+
+          const profileRes = fetch(`http://172.20.10.7:5000/api/profile/${studentId}?t=${timestamp}`, { headers });
+          const dashboardRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/dashboard?t=${timestamp}`, { headers });
+          const materialsRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/materials?t=${timestamp}`, { headers });
+          const historyRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/attendance-history?t=${timestamp}`, { headers });
           
           const [profileResponse, dashboardResponse, materialsResponse, historyResponse] = await Promise.all([
             profileRes, 

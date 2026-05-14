@@ -25,8 +25,9 @@ export default function AdminLogin() {
 
       const data = await response.json();
 
-      if (response.ok) {
-        // Save user data to localStorage
+        if (response.ok) {
+        // Save user data and token to localStorage
+        localStorage.setItem('sisuLinkToken', data.token);
         localStorage.setItem('sisuLinkUser', JSON.stringify(data.user || data.student));
 
         // The backend tells us what role they are, so we route them accordingly

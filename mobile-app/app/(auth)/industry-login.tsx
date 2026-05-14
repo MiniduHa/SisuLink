@@ -41,6 +41,7 @@ export default function IndustryLoginScreen() {
 
       if (response.ok) {
         // Persist industry email for all tabs
+        await AsyncStorage.setItem('userToken', data.token);
         await AsyncStorage.setItem('industryEmail', data.user.email);
         // Navigate to Industry dashboard
         router.push({

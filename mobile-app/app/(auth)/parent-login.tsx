@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { height } = Dimensions.get("window");
 const API_URL = "http://172.20.10.7:5000/api/auth/login";
@@ -57,6 +58,8 @@ export default function ParentLoginScreen() {
             child_ids: JSON.stringify(data.user.child_student_ids) 
           }
         });
+        await AsyncStorage.setItem('userToken', data.token);
+        await AsyncStorage.setItem('parentEmail', data.user.email);
       } else {
         Alert.alert("Login Failed", data.error || "Invalid credentials");
       }

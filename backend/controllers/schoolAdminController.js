@@ -1,5 +1,7 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 // 1. Dashboard Stats
 exports.getSchoolDashboardStats = async (req, res) => {
@@ -738,3 +740,150 @@ exports.updateIndustryPartner = async (req, res) => {
   }
 };
 
+
+exports.getPendingInternships = async (req, res) => {
+  try {
+    // For now, let's show all pending internships. 
+    // In a more complex system, we might filter by linked schools.
+    const result = await db.query("SELECT * FROM internships WHERE status = 'Pending' ORDER BY created_at DESC");
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch pending internships." }); }
+};
+
+exports.updateInternshipStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'Active' or 'Rejected'
+    const result = await db.query('UPDATE internships SET status = $1 WHERE id = $2 RETURNING *', [status, id]);
+    res.json({ message: `Internship post ${status}`, internship: result.rows[0] });
+  } catch (error) { res.status(500).json({ error: "Failed to update internship status." }); }
+};
+
+exports.getPendingAnnouncements = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const school = await db.query('SELECT id FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
+    if (school.rows.length === 0) return res.status(404).json({ error: "School not found" });
+
+    const schoolId = school.rows[0].id;
+    const result = await db.query(
+      `SELECT a.*, p.company_name, p.logo_url 
+       FROM industry_announcements a 
+       JOIN industry_partners p ON a.industry_email = p.email 
+       WHERE a.target_school_id = $1 AND a.status = 'Pending' 
+       ORDER BY a.created_at DESC`,
+      [schoolId]
+    );
+    res.json(result.rows);
+  } catch (error) { res.status(500).json({ error: "Failed to fetch pending announcements." }); }
+};
+
+exports.updateAnnouncementStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'Active' or 'Rejected'
+    const result = await db.query('UPDATE industry_announcements SET status = $1 WHERE id = $2 RETURNING *', [status, id]);
+    res.json({ message: `Announcement ${status}`, announcement: result.rows[0] });
+  } catch (error) { res.status(500).json({ error: "Failed to update announcement status." }); }
+};
+
+exports.uploadEventImage = async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No image uploaded." });
+
+    const fileExt = file.originalname ? file.originalname.split('.').pop() : 'jpg';
+    const fileName = `event_${Date.now()}.${fileExt}`;
+
+    console.log(`[DEBUG] Attempting upload: ${fileName}, size: ${file.size} bytes, type: ${file.mimetype}`);
+
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file.buffer, {
+      contentType: file.mimetype,
+      upsert: true
+    });
+
+    if (uploadError) {
+      console.error("[DEBUG] Supabase Upload Error Details:", uploadError);
+      throw uploadError;
+    }
+
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+
+    res.json({ message: "Image uploaded successfully", imageUrl: publicUrl });
+  } catch (error) {
+    console.error("Error uploading event image:", error);
+    res.status(500).json({ error: "Server error during event image upload." });
+  }
+};
+
+exports.getProfile = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const result = await db.query('SELECT * FROM schools WHERE email = $1', [email.toLowerCase().trim()]);
+    if (result.rows.length === 0) return res.status(404).json({ error: "School not found" });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Fetch Profile Error:", error);
+    res.status(500).json({ error: "Failed to fetch school profile." });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { logo_url, slogan, bio, phone, website, address, facebook, instagram, linkedin } = req.body;
+
+    const result = await db.query(
+      `UPDATE schools 
+       SET logo_url = $1, slogan = $2, bio = $3, phone = $4, website = $5, address = $6, facebook_url = $7, instagram_url = $8, linkedin_url = $9
+       WHERE email = $10 RETURNING *`,
+      [logo_url, slogan, bio, phone, website, address, facebook, instagram, linkedin, email.toLowerCase().trim()]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "School not found" });
+    res.json({ message: "School profile updated successfully!", school: result.rows[0] });
+  } catch (error) {
+    console.error("Update Profile Error:", error);
+    res.status(500).json({ error: "Failed to update profile." });
+  }
+};
+
+exports.getSchoolProfileByUser = async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1. Determine which school this user belongs to
+    let schoolId = null;
+
+    let result = await db.query('SELECT school_id FROM students WHERE email = $1', [cleanEmail]);
+    if (result.rows.length > 0) schoolId = result.rows[0].school_id;
+
+    if (!schoolId) {
+      result = await db.query('SELECT school_id FROM teachers WHERE email = $1', [cleanEmail]);
+      if (result.rows.length > 0) schoolId = result.rows[0].school_id;
+    }
+
+    if (!schoolId) {
+      result = await db.query('SELECT school_id FROM parents WHERE email = $1', [cleanEmail]);
+      if (result.rows.length > 0) schoolId = result.rows[0].school_id;
+    }
+
+    if (!schoolId) return res.status(404).json({ error: "User or associated school not found." });
+
+    // 2. Fetch the school profile
+    const schoolRes = await db.query(
+      `SELECT name, logo_url, slogan, bio, phone, email, website, address, facebook_url, instagram_url, linkedin_url 
+       FROM schools WHERE id = $1`,
+      [schoolId]
+    );
+
+    if (schoolRes.rows.length === 0) return res.status(404).json({ error: "School profile not found." });
+
+    res.json(schoolRes.rows[0]);
+  } catch (error) {
+    console.error("Fetch App School Profile Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch school profile." });
+  }
+};
+

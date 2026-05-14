@@ -199,6 +199,14 @@ export default function TeacherAttendanceScreen() {
     }
   };
 
+  const { presentCount, absentCount } = useMemo(() => {
+    const values = Object.values(attendanceData);
+    return {
+      presentCount: values.filter(v => v === 'Present').length,
+      absentCount: values.filter(v => v === 'Absent').length
+    };
+  }, [attendanceData]);
+
   if (isLoading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -208,13 +216,6 @@ export default function TeacherAttendanceScreen() {
     );
   }
 
-  const { presentCount, absentCount } = useMemo(() => {
-    const values = Object.values(attendanceData);
-    return {
-      presentCount: values.filter(v => v === 'Present').length,
-      absentCount: values.filter(v => v === 'Absent').length
-    };
-  }, [attendanceData]);
 
   return (
     <View style={styles.container}>
