@@ -88,10 +88,10 @@ export default function IndustryScreen() {
               activeOpacity={0.8}
               onPress={() => router.push({ pathname: "/(industry-tabs)/industry-profile", params: { company_name: companyName, email, logo_url: logoUrl || "null", status } })}
             >
-              {logoUrl ? (
+              {logoUrl && logoUrl !== "null" ? (
                 <Image source={{ uri: logoUrl }} style={styles.avatarImage} />
               ) : (
-                <Text style={styles.avatarText}>{companyName.charAt(0).toUpperCase()}</Text>
+                <FontAwesome6 name="building" size={24} color="#FFFFFF" />
               )}
             </TouchableOpacity>
             <View>

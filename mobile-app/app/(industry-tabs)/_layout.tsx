@@ -48,6 +48,14 @@ export default function IndustryTabsLayout() {
       />
 
       <Tabs.Screen
+        name="about-us"
+        options={{
+          title: "ABOUT US",
+          tabBarIcon: ({ color }) => <FontAwesome6 name="circle-info" size={20} color={color} />,
+        }}
+      />
+
+      <Tabs.Screen
         name="industry-profile"
         options={{
           href: null,

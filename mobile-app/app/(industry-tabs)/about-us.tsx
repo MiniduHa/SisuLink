@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { FontAwesome6, Feather, MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function AboutUs() {
   const params = useLocalSearchParams();
@@ -29,13 +30,31 @@ export default function AboutUs() {
     industry_type: '',
     phone: '',
     brn: '',
-    logo_url: ''
+    logo_url: '',
+    bio: '',
+    website: '',
+    linkedin: '',
+    address: ''
   });
 
   const fetchProfile = async () => {
-    if (!email) return;
+    let currentEmail = email;
+    
+    if (!currentEmail) {
+      try {
+        currentEmail = await AsyncStorage.getItem('industryEmail') || "";
+      } catch (err) {
+        console.error("Failed to get email from storage:", err);
+      }
+    }
+
+    if (!currentEmail) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const response = await fetch(`http://172.20.10.7:5000/api/industry/${email}/dashboard`);
+      const response = await fetch(`http://172.20.10.7:5000/api/industry/${currentEmail}/dashboard`);
       if (response.ok) {
         const data = await response.json();
         setPartnerData(data.partner);
@@ -44,7 +63,11 @@ export default function AboutUs() {
           industry_type: data.partner.industry_type,
           phone: data.partner.phone || '',
           brn: data.partner.brn,
-          logo_url: data.partner.logo_url || ''
+          logo_url: data.partner.logo_url || '',
+          bio: data.partner.bio || '',
+          website: data.partner.website || '',
+          linkedin: data.partner.linkedin || '',
+          address: data.partner.address || ''
         });
       }
     } catch (error) {
@@ -68,7 +91,8 @@ export default function AboutUs() {
 
     setIsUpdating(true);
     try {
-      const response = await fetch(`http://172.20.10.7:5000/api/industry/${email}/profile`, {
+      const currentEmail = email || await AsyncStorage.getItem('industryEmail') || "";
+      const response = await fetch(`http://172.20.10.7:5000/api/industry/${currentEmail}/profile`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editFormData)
@@ -119,10 +143,10 @@ export default function AboutUs() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.profileCard}>
           <View style={styles.logoContainer}>
-            {partnerData.logo_url ? (
+            {partnerData.logo_url && partnerData.logo_url !== "null" ? (
               <Image source={{ uri: partnerData.logo_url }} style={styles.logo} />
             ) : (
-              <Text style={styles.logoText}>{partnerData.company_name.charAt(0)}</Text>
+              <FontAwesome6 name="building" size={40} color="#FFFFFF" />
             )}
           </View>
           <Text style={styles.companyName}>{partnerData.company_name}</Text>
@@ -131,6 +155,13 @@ export default function AboutUs() {
             <Text style={[styles.statusBadgeText, { color: partnerData.status === 'Active' ? '#16A34A' : '#EF4444' }]}>{partnerData.status}</Text>
           </View>
         </View>
+
+        {partnerData.bio && (
+          <View style={styles.infoSection}>
+            <Text style={styles.sectionTitle}>About Company</Text>
+            <Text style={styles.bioText}>{partnerData.bio}</Text>
+          </View>
+        )}
 
         <View style={styles.infoSection}>
           <Text style={styles.sectionTitle}>Contact Details</Text>
@@ -150,6 +181,39 @@ export default function AboutUs() {
             <View>
               <Text style={styles.infoLabel}>Contact Number</Text>
               <Text style={styles.infoValue}>{partnerData.phone || 'Not Provided'}</Text>
+            </View>
+          </View>
+          {partnerData.address && (
+            <View style={styles.infoRow}>
+              <View style={styles.iconBox}>
+                <Feather name="map-pin" size={18} color="#2563EB" />
+              </View>
+              <View>
+                <Text style={styles.infoLabel}>Address</Text>
+                <Text style={styles.infoValue}>{partnerData.address}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.infoSection}>
+          <Text style={styles.sectionTitle}>Online Presence</Text>
+          <View style={styles.infoRow}>
+            <View style={styles.iconBox}>
+              <Feather name="globe" size={18} color="#2563EB" />
+            </View>
+            <View>
+              <Text style={styles.infoLabel}>Website</Text>
+              <Text style={styles.infoValue}>{partnerData.website || 'Not Provided'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <View style={styles.iconBox}>
+              <Feather name="linkedin" size={18} color="#2563EB" />
+            </View>
+            <View>
+              <Text style={styles.infoLabel}>LinkedIn</Text>
+              <Text style={styles.infoValue}>{partnerData.linkedin || 'Not Provided'}</Text>
             </View>
           </View>
         </View>
@@ -246,6 +310,39 @@ export default function AboutUs() {
               value={editFormData.logo_url}
               onChangeText={(text) => setEditFormData({...editFormData, logo_url: text})}
             />
+
+            <Text style={styles.inputLabel}>About Company</Text>
+            <TextInput 
+              style={[styles.input, { height: 100, textAlignVertical: 'top' }]} 
+              placeholder="Tell us about your company..."
+              value={editFormData.bio}
+              onChangeText={(text) => setEditFormData({...editFormData, bio: text})}
+              multiline
+            />
+
+            <Text style={styles.inputLabel}>Website</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="https://..."
+              value={editFormData.website}
+              onChangeText={(text) => setEditFormData({...editFormData, website: text})}
+            />
+
+            <Text style={styles.inputLabel}>LinkedIn</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="LinkedIn profile URL"
+              value={editFormData.linkedin}
+              onChangeText={(text) => setEditFormData({...editFormData, linkedin: text})}
+            />
+
+            <Text style={styles.inputLabel}>Address</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="Company address"
+              value={editFormData.address}
+              onChangeText={(text) => setEditFormData({...editFormData, address: text})}
+            />
             <View style={{ height: 40 }} />
           </ScrollView>
         </View>
@@ -261,7 +358,7 @@ const styles = StyleSheet.create({
   editBtnHeader: { padding: 8 },
   scrollContent: { padding: 20 },
   profileCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 30, alignItems: 'center', marginBottom: 20, elevation: 2 },
-  logoContainer: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center', marginBottom: 16, overflow: 'hidden' },
+  logoContainer: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center', marginBottom: 16, overflow: 'hidden' },
   logo: { width: '100%', height: '100%', resizeMode: 'cover' },
   logoText: { color: '#FFF', fontSize: 40, fontWeight: 'bold' },
   companyName: { fontSize: 22, fontWeight: 'bold', color: '#1E293B', marginBottom: 4 },
@@ -282,5 +379,6 @@ const styles = StyleSheet.create({
   saveBtnText: { color: '#2563EB', fontWeight: 'bold', fontSize: 16 },
   formContent: { padding: 20 },
   inputLabel: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8, marginTop: 16 },
-  input: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 12, fontSize: 15, color: '#1E293B' }
+  input: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 12, fontSize: 15, color: '#1E293B' },
+  bioText: { fontSize: 15, color: '#475569', lineHeight: 22 }
 });
