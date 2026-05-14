@@ -3028,6 +3028,138 @@ app.post('/api/teacher/attendance', async (req, res) => {
   }
 });
 
+// ---> FETCH TEACHER ASSIGNMENTS (CLASSES & SUBJECTS) <---
+app.get('/api/teacher/:email/assignments', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const cleanEmail = email.toLowerCase().trim();
+    const teacherRes = await db.query('SELECT id, school_id, subject FROM teachers WHERE email = $1', [cleanEmail]);
+    if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
+    const teacher = teacherRes.rows[0];
+    const teacherId = teacher.id;
+    const teacherSubject = teacher.subject;
+
+    // 1. Get assignments from timetable
+    const timetableRes = await db.query(
+      `SELECT DISTINCT c.grade, c.section, ct.subject
+       FROM class_timetables ct
+       JOIN classes c ON ct.class_id = c.id
+       WHERE ct.teacher_id = $1
+       ORDER BY c.grade, c.section, ct.subject`,
+       [teacherId]
+    );
+
+    // 2. Get from managed class (if they are a class teacher)
+    const managedClassRes = await db.query(
+      `SELECT grade, section, $1 as subject 
+       FROM classes 
+       WHERE class_teacher_id = $2`,
+       [teacherSubject, teacherId]
+    );
+
+    // Combine results and ensure uniqueness
+    const combined = [...timetableRes.rows, ...managedClassRes.rows];
+    const uniqueAssignments = Array.from(new Set(combined.map(a => JSON.stringify({
+      grade: a.grade,
+      section: a.section,
+      subject: a.subject
+    })))).map(s => JSON.parse(s));
+
+    res.json(uniqueAssignments);
+  } catch (error) {
+    console.error("Fetch Assignments Error:", error);
+    res.status(500).json({ error: "Server error fetching assignments." });
+  }
+});
+
+// ---> FETCH STUDENTS FOR MARKING <---
+app.get('/api/teacher/:email/class-marks', async (req, res) => {
+  try {
+    const { grade, section, subject, term } = req.query;
+    
+    // 1. Fetch students in that class who study the selected subject (or if subjects array is empty/null, assume all study it)
+    const studentsRes = await db.query(
+      `SELECT id, first_name, last_name, index_number, profile_photo_url 
+       FROM students 
+       WHERE grade_level = $1 AND section = $2 
+       AND (subjects IS NULL OR jsonb_array_length(subjects) = 0 OR subjects ? $3)
+       ORDER BY first_name ASC`,
+      [grade, section, subject]
+    );
+
+    // 2. Fetch existing marks for these students for the given subject and term
+    const existingMarksRes = await db.query(
+      `SELECT student_id, marks, grade, remarks 
+       FROM student_grades 
+       WHERE subject_name = $1 AND assessment_type = $2 AND student_id IN (
+         SELECT index_number FROM students WHERE grade_level = $3 AND section = $4
+       )`,
+       [subject, term, grade, section]
+    );
+
+    const marksMap = {};
+    existingMarksRes.rows.forEach(row => {
+      marksMap[row.student_id] = { marks: row.marks, grade: row.grade, remarks: row.remarks };
+    });
+
+    res.json({
+      students: studentsRes.rows,
+      marks: marksMap
+    });
+
+  } catch (error) {
+    console.error("Fetch Class Marks Error:", error);
+    res.status(500).json({ error: "Server error fetching class marks." });
+  }
+});
+
+// ---> SUBMIT STUDENT MARKS <---
+app.post('/api/teacher/:email/class-marks', async (req, res) => {
+  try {
+    const { subject, term, marksData } = req.body;
+    
+    if (!subject || !term || !marksData || !Array.isArray(marksData)) {
+      return res.status(400).json({ error: "Invalid marks data." });
+    }
+
+    await db.query('BEGIN');
+
+    for (const item of marksData) {
+      const { studentId, indexNumber, marks, grade, remarks } = item;
+      
+      // Get school_id
+      const studentRes = await db.query('SELECT school_id FROM students WHERE index_number = $1', [indexNumber]);
+      if (studentRes.rows.length > 0) {
+        const schoolId = studentRes.rows[0].school_id;
+        
+        const existing = await db.query(
+          'SELECT id FROM student_grades WHERE student_id = $1 AND subject_name = $2 AND assessment_type = $3',
+          [indexNumber, subject, term]
+        );
+        
+        if (existing.rows.length > 0) {
+          await db.query(
+            'UPDATE student_grades SET marks = $1, grade = $2, remarks = $3 WHERE id = $4',
+            [marks, grade, remarks, existing.rows[0].id]
+          );
+        } else {
+          await db.query(
+            'INSERT INTO student_grades (school_id, student_id, subject_name, assessment_type, marks, grade, remarks) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [schoolId, indexNumber, subject, term, marks, grade, remarks]
+          );
+        }
+      }
+    }
+
+    await db.query('COMMIT');
+    res.json({ message: "Marks updated successfully!" });
+  } catch (error) {
+    await db.query('ROLLBACK');
+    console.error("Submit Marks Error:", error);
+    res.status(500).json({ error: "Failed to submit marks." });
+  }
+});
+
 // --- START THE SERVER ---
 const PORT = process.env.PORT || 5000;
 if (require.main === module) {

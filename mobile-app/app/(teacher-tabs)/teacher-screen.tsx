@@ -198,6 +198,27 @@ export default function TeacherDashboard() {
               </View>
             )}
 
+            {/* ACADEMIC CONTROLS */}
+            <View style={styles.classTeacherSection}>
+              <Text style={styles.sectionTitleNew}>ACADEMIC CONTROLS</Text>
+              <TouchableOpacity 
+                style={styles.markAttendanceCard}
+                activeOpacity={0.8}
+                onPress={() => router.push({ pathname: "/(teacher-tabs)/teacher-marks", params: getNavParams() } as any)}
+              >
+                <View style={styles.attendanceCardLeft}>
+                  <View style={[styles.attendanceIconBg, { backgroundColor: "#059669" }]}>
+                    <FontAwesome6 name="file-signature" size={20} color="#FFFFFF" />
+                  </View>
+                  <View>
+                    <Text style={styles.attendanceCardTitle}>Manage Marks & Grades</Text>
+                    <Text style={styles.attendanceCardSub}>Input marks for your subjects</Text>
+                  </View>
+                </View>
+                <FontAwesome6 name="chevron-right" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
             {/* TODAY'S SCHEDULE */}
             <View style={styles.sectionHeaderNew}>
               <Text style={styles.sectionTitleNew}>{dashboardData.currentDay ? dashboardData.currentDay.toUpperCase() : "TODAY"}'S SCHEDULE</Text>
