@@ -37,8 +37,11 @@ export default function StudentScreen() {
   const gradeNum = gradeMatch ? parseInt(gradeMatch[0], 10) : 0;
   const isIndustryVisible = gradeNum >= 10;
   
-  const isALevel = gradeLevel.includes("12") || gradeLevel.includes("13");
-  const academicLevel = isALevel ? "A/L" : "O/L";
+  const isALevel = gradeLevel.includes("12") || gradeLevel.includes("13") || gradeLevel.includes("A/L");
+  let academicLevel = "O/L";
+  if (gradeNum >= 1 && gradeNum <= 5) academicLevel = "Primary";
+  else if (gradeNum >= 6 && gradeNum <= 9) academicLevel = "Junior Secondary";
+  else if (isALevel) academicLevel = "A/L";
 
   // --- DASHBOARD DATA STATES ---
   const [isLoading, setIsLoading] = useState(true);
@@ -272,6 +275,26 @@ export default function StudentScreen() {
         </View>
 
         <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Latest Grades</Text>
+          <TouchableOpacity onPress={() => router.push({ pathname: "/grades", params: { studentId: studentId, first_name: firstName, last_name: lastName, grade_level: gradeLevel } })}><Text style={styles.linkText}>View Report</Text></TouchableOpacity>
+        </View>
+
+        {dashboardData.gradesData.map((item: any) => (
+          <View key={item.id} style={styles.gradeCard}>
+            <View style={styles.gradeInfoLeft}>
+              <View style={[styles.gradeIconContainer, { backgroundColor: item.iconBg }]}>
+                {item.icon === "sigma" ? ( <MaterialCommunityIcons name="sigma" size={24} color={item.iconColor} /> ) : ( <FontAwesome6 name={item.icon} size={18} color={item.iconColor} /> )}
+              </View>
+              <View><Text style={styles.subjectName}>{item.subject}</Text><Text style={styles.assessmentType}>{item.type}</Text></View>
+            </View>
+            <View style={styles.gradeInfoRight}>
+              <View style={[styles.gradeBadge, { backgroundColor: item.gradeBg }]}><Text style={[styles.gradeBadgeText, { color: item.gradeColor }]}>{item.grade}</Text></View>
+              <FontAwesome6 name={item.trend} size={14} color={item.trendColor} style={{ marginLeft: 8 }} />
+            </View>
+          </View>
+        ))}
+
+        <View style={[styles.sectionHeader, { marginTop: 10 }]}>
           <Text style={styles.sectionTitle}>On Going Subjects</Text>
         </View>
 
@@ -361,25 +384,6 @@ export default function StudentScreen() {
           )}
         </ScrollView>
 
-        <View style={[styles.sectionHeader, { marginTop: 24 }]}>
-          <Text style={styles.sectionTitle}>Latest Grades</Text>
-          <TouchableOpacity onPress={() => router.push("/grades")}><Text style={styles.linkText}>View Report</Text></TouchableOpacity>
-        </View>
-
-        {dashboardData.gradesData.map((item: any) => (
-          <View key={item.id} style={styles.gradeCard}>
-            <View style={styles.gradeInfoLeft}>
-              <View style={[styles.gradeIconContainer, { backgroundColor: item.iconBg }]}>
-                {item.icon === "sigma" ? ( <MaterialCommunityIcons name="sigma" size={24} color={item.iconColor} /> ) : ( <FontAwesome6 name={item.icon} size={18} color={item.iconColor} /> )}
-              </View>
-              <View><Text style={styles.subjectName}>{item.subject}</Text><Text style={styles.assessmentType}>{item.type}</Text></View>
-            </View>
-            <View style={styles.gradeInfoRight}>
-              <View style={[styles.gradeBadge, { backgroundColor: item.gradeBg }]}><Text style={[styles.gradeBadgeText, { color: item.gradeColor }]}>{item.grade}</Text></View>
-              <FontAwesome6 name={item.trend} size={14} color={item.trendColor} style={{ marginLeft: 8 }} />
-            </View>
-          </View>
-        ))}
         {/* INDUSTRY ANNOUNCEMENTS SECTION */}
         {isIndustryVisible && (
           <>

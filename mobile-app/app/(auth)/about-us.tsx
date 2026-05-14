@@ -209,7 +209,7 @@ export default function AboutUsScreen() {
 
           {/* FOOTER */}
           <Text style={styles.footerText}>SisuLink App v1.0.0</Text>
-          <Text style={styles.footerSubText}>© 2026 Booking Window Companies. All rights reserved.</Text>
+          <Text style={styles.footerSubText}>© 2026 SisuLink. All rights reserved.</Text>
 
         </View>
       </ScrollView>

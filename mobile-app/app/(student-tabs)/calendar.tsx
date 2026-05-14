@@ -56,7 +56,10 @@ export default function SchoolCalendarScreen() {
             // Map DB fields to UI expectations
             const mappedEvents = data.map((evt: any) => ({
               id: evt.id.toString(),
-              date: evt.event_date.split('T')[0],
+              date: (() => {
+                const d = new Date(evt.event_date);
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+              })(),
               title: evt.title,
               type: evt.type.toLowerCase(),
               isSpecial: evt.is_special,

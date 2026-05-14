@@ -1190,24 +1190,152 @@ app.get('/api/student/:studentId/attendance-history', async (req, res) => {
 });
 
 
-// ---> FETCH STUDENT GRADES ROUTE <---
-app.get('/api/student/:studentId/grades', async (req, res) => {
+// ---> FETCH STUDENT ACADEMIC REPORT (Marks, Rank, Average) <---
+app.get('/api/student/:studentId/academic-report', async (req, res) => {
   try {
     const { studentId } = req.params;
+    const requestedTerm = req.query.term;
 
-    // Fetch all grades for this specific student
-    const result = await db.query(
-      `SELECT subject_name as subject, marks, grade, assessment_type as term, level, remarks 
-       FROM student_grades 
-       WHERE student_id = $1 
-       ORDER BY created_at DESC`,
+    // 1. Fetch Student Details & Enrolled Subjects
+    const studentRes = await db.query(
+      'SELECT first_name, last_name, index_number, grade_level, section, school_id, subjects FROM students WHERE index_number = $1',
       [studentId]
     );
+    if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
+    const { first_name, last_name, index_number, grade_level, section, school_id: schoolId, subjects: enrolledSubjectsData } = studentRes.rows[0];
+    const studentFullName = `${first_name} ${last_name}`;
 
-    res.json(result.rows);
+    let enrolledSubjects = [];
+    try {
+      if (enrolledSubjectsData) {
+        enrolledSubjects = typeof enrolledSubjectsData === 'string' ? JSON.parse(enrolledSubjectsData) : enrolledSubjectsData;
+      }
+    } catch (e) {
+      console.error("Error parsing student subjects:", e);
+    }
+
+    // 2. Determine Term
+    let term = requestedTerm;
+    if (!term || term === 'null') {
+      const latestTermRes = await db.query(
+        'SELECT assessment_type FROM student_grades WHERE student_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [studentId]
+      );
+      if (latestTermRes.rows.length === 0) {
+        term = "Term 1"; // Default if no grades exist
+      } else {
+        term = latestTermRes.rows[0].assessment_type;
+      }
+    }
+
+    // 3. Fetch Student's Grades for this term
+    const gradesRes = await db.query(
+      `SELECT subject_name as name, marks, grade, remarks
+       FROM student_grades
+       WHERE student_id = $1 AND assessment_type = $2`,
+       [studentId, term]
+    );
+
+    let totalMarks = 0;
+    let subjectsWithMarksCount = 0;
+    const finalSubjects = [];
+
+    // 4. Map enrolled subjects to grades
+    for (let subjName of enrolledSubjects) {
+      const gradeRecord = gradesRes.rows.find(g => g.name === subjName);
+      
+      let marksVal = "-";
+      let grade = "-";
+      let remarks = "-";
+      
+      if (gradeRecord) {
+        const parsedMarks = parseFloat(gradeRecord.marks) || 0;
+        marksVal = parsedMarks;
+        grade = gradeRecord.grade;
+        remarks = gradeRecord.remarks || "No remarks";
+        totalMarks += parsedMarks;
+        subjectsWithMarksCount++;
+      }
+
+      const avgRes = await db.query(
+        'SELECT ROUND(AVG(marks), 1) as average FROM student_grades WHERE subject_name = $1 AND assessment_type = $2 AND school_id = $3',
+        [subjName, term, schoolId]
+      );
+
+      finalSubjects.push({
+        subject: subjName,
+        marks: marksVal,
+        grade: grade,
+        remarks: remarks,
+        classAverage: parseFloat(avgRes.rows[0].average) || 0
+      });
+    }
+
+    // If no enrolled subjects, just return what grades we found (fallback)
+    if (enrolledSubjects.length === 0) {
+      for (let g of gradesRes.rows) {
+        const marksVal = parseFloat(g.marks) || 0;
+        totalMarks += marksVal;
+        subjectsWithMarksCount++;
+        const avgRes = await db.query(
+          'SELECT ROUND(AVG(marks), 1) as average FROM student_grades WHERE subject_name = $1 AND assessment_type = $2 AND school_id = $3',
+          [g.name, term, schoolId]
+        );
+        finalSubjects.push({
+          subject: g.name,
+          marks: marksVal,
+          grade: g.grade,
+          remarks: g.remarks || "No remarks",
+          classAverage: parseFloat(avgRes.rows[0].average) || 0
+        });
+      }
+    }
+
+    const studentAverage = subjectsWithMarksCount > 0 ? (totalMarks / subjectsWithMarksCount).toFixed(1) : "0.0";
+
+    // 5. Calculate Class Average (Overall average of all students in the class for this term)
+    const classOverallAvgRes = await db.query(
+      `SELECT ROUND(AVG(marks), 1) as average 
+       FROM student_grades sg
+       JOIN students s ON sg.student_id = s.index_number
+       WHERE s.grade_level = $1 AND s.section = $2 AND sg.assessment_type = $3 AND s.school_id = $4`,
+       [grade_level, section, term, schoolId]
+    );
+    const classAverage = parseFloat(classOverallAvgRes.rows[0].average) || 0;
+
+    // 6. Rank calculation
+    const ranksRes = await db.query(
+      `SELECT student_id, SUM(marks) as total_marks
+       FROM student_grades sg
+       JOIN students s ON sg.student_id = s.index_number
+       WHERE s.grade_level = $1 AND s.section = $2 AND sg.assessment_type = $3 AND s.school_id = $4
+       GROUP BY student_id
+       ORDER BY total_marks DESC`,
+       [grade_level, section, term, schoolId]
+    );
+    
+    let rank = "N/A";
+    const totalStudentsInClass = ranksRes.rows.length;
+    const studentRankIndex = ranksRes.rows.findIndex(r => r.student_id === studentId);
+    if (studentRankIndex !== -1) {
+      const rankNum = studentRankIndex + 1;
+      const ordinal = getOrdinal(rankNum);
+      rank = `${rankNum}${ordinal} of ${totalStudentsInClass}`;
+    }
+
+    res.json({
+      studentName: studentFullName,
+      studentGrade: grade_level,
+      studentIndex: index_number,
+      subjects: finalSubjects,
+      studentAverage,
+      classAverage,
+      classRank: rank,
+      term
+    });
   } catch (error) {
-    console.error("Grades Fetch Error:", error.message);
-    res.status(500).json({ error: "Server error fetching student grades." });
+    console.error("Academic Report API Error:", error);
+    res.status(500).json({ error: "Failed to fetch academic report." });
   }
 });
 
@@ -2074,18 +2202,75 @@ app.get('/api/parent/:email/dashboard', async (req, res) => {
     if (parentRes.rows.length === 0) return res.status(404).json({ error: "Parent not found" });
     const parent = parentRes.rows[0];
 
-    // 2. Fetch children details
+    // 2. Fetch children details with academic summaries
     let children = [];
     if (parent.child_student_ids && parent.child_student_ids.length > 0) {
       const childrenRes = await db.query(
-        'SELECT first_name, last_name, index_number, grade_level, section FROM students WHERE index_number = ANY($1)',
+        'SELECT id, first_name, last_name, index_number, grade_level, section, school_id FROM students WHERE index_number = ANY($1)',
         [parent.child_student_ids]
       );
-      children = childrenRes.rows.map(child => ({
-        name: `${child.first_name} ${child.last_name}`,
-        studentId: child.index_number,
-        class: `${child.grade_level} - ${child.section}`
-      }));
+      
+      for (let child of childrenRes.rows) {
+        // Fetch academic summary for each child
+        const latestTermRes = await db.query(
+          'SELECT assessment_type FROM student_grades WHERE student_id = $1 ORDER BY created_at DESC LIMIT 1',
+          [child.index_number]
+        );
+        const term = latestTermRes.rows.length > 0 ? latestTermRes.rows[0].assessment_type : "Term 1";
+
+        const gradesRes = await db.query(
+          `SELECT subject_name as name, marks, grade, remarks
+           FROM student_grades
+           WHERE student_id = $1 AND assessment_type = $2`,
+           [child.index_number, term]
+        );
+
+        let totalMarks = 0;
+        const subjects = gradesRes.rows.map(g => {
+          totalMarks += parseFloat(g.marks) || 0;
+          return {
+            name: g.name,
+            marks: g.marks,
+            grade: g.grade,
+            remarks: g.remarks || "-"
+          };
+        });
+
+        const avgGrade = subjects.length > 0 ? (totalMarks / subjects.length).toFixed(1) : "0.0";
+
+        // Attendance
+        const attRes = await db.query(
+          'SELECT COUNT(*) as total, SUM(CASE WHEN status = \'Present\' THEN 1 ELSE 0 END) as present FROM student_attendance WHERE student_id = $1',
+          [child.id]
+        );
+        const attendance = attRes.rows[0].total > 0 ? Math.round((attRes.rows[0].present / attRes.rows[0].total) * 100) + "%" : "0%";
+
+        // Rank
+        const ranksRes = await db.query(
+          `SELECT student_id, SUM(marks) as total_marks
+           FROM student_grades sg
+           JOIN students s ON sg.student_id = s.index_number
+           WHERE s.grade_level = $1 AND s.section = $2 AND sg.assessment_type = $3 AND s.school_id = $4
+           GROUP BY student_id
+           ORDER BY total_marks DESC`,
+           [child.grade_level, child.section, term, child.school_id]
+        );
+        const studentRankIndex = ranksRes.rows.findIndex(r => r.student_id === child.index_number);
+        const rank = studentRankIndex !== -1 ? (studentRankIndex + 1) + getOrdinal(studentRankIndex + 1) : "N/A";
+
+        children.push({
+          name: `${child.first_name} ${child.last_name}`,
+          studentId: child.index_number,
+          class: `${child.grade_level} - ${child.section}`,
+          academics: {
+            term,
+            attendance,
+            avgGrade,
+            rank,
+            subjects: subjects.slice(0, 3) // Show first 3 for summary
+          }
+        });
+      }
     }
 
     // 3. Fetch urgent notices for parents
@@ -2200,14 +2385,14 @@ app.get('/api/parent/student/:studentId/academic-profile', async (req, res) => {
       .filter(r => r.status === 'Absent')
       .map(r => {
         const d = new Date(r.date);
-        return d.toISOString().split('T')[0];
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       });
 
     const presentDates = attRes.rows
       .filter(r => r.status === 'Present')
       .map(r => {
         const d = new Date(r.date);
-        return d.toISOString().split('T')[0];
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       });
 
     // 3. Teachers & Contacts
@@ -2271,6 +2456,7 @@ app.get('/api/parent/student/:studentId/academic-profile', async (req, res) => {
         name: g.name,
         marks: parseFloat(g.marks),
         grade: g.grade,
+        remarks: g.remarks || "-",
         average: parseFloat(avgRes.rows[0].average) || 0
       });
     }
@@ -2721,7 +2907,8 @@ app.get('/api/teacher/:email/attendance-monthly-report/:year/:month', async (req
 
     // 3. Get all attendance records for the class in that month
     const startDate = `${year}-${month.padStart(2, '0')}-01`;
-    const endDate = new Date(parseInt(year), parseInt(month), 0).toISOString().split('T')[0];
+    const endD = new Date(parseInt(year), parseInt(month), 0);
+    const endDate = endD.getFullYear() + '-' + String(endD.getMonth() + 1).padStart(2, '0') + '-' + String(endD.getDate()).padStart(2, '0');
 
     const attendanceRes = await db.query(
       `SELECT sa.student_id, sa.date, sa.status
@@ -2735,7 +2922,8 @@ app.get('/api/teacher/:email/attendance-monthly-report/:year/:month', async (req
     // 4. Format into a matrix
     const attendanceMap = {};
     attendanceRes.rows.forEach(row => {
-      const dateStr = new Date(row.date).toISOString().split('T')[0];
+      const d = new Date(row.date);
+      const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       if (!attendanceMap[row.student_id]) attendanceMap[row.student_id] = {};
       attendanceMap[row.student_id][dateStr] = row.status;
     });
@@ -2778,7 +2966,8 @@ app.get('/api/teacher/:email/class-students', async (req, res) => {
     );
 
     // 4. Get existing attendance for today
-    const today = new Date().toISOString().split('T')[0];
+    const dNow = new Date();
+    const today = dNow.getFullYear() + '-' + String(dNow.getMonth() + 1).padStart(2, '0') + '-' + String(dNow.getDate()).padStart(2, '0');
     const attendanceRes = await db.query(
       `SELECT student_id, status FROM student_attendance WHERE date = $1 AND student_id IN (
         SELECT id FROM students WHERE grade_level = $2 AND section = $3

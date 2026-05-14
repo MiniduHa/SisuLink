@@ -13,34 +13,18 @@ import { FontAwesome6, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import WatermarkOverlay from "../../components/WatermarkOverlay";
-export default function GradesScreen() {
+
+export default function ChildReportScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   
-  // Extract student details from params or storage
-  const [studentId, setStudentId] = useState((params.studentId as string) || (params.index_number as string) || "");
-  const [studentName, setStudentName] = useState((params.first_name as string) ? `${params.first_name} ${params.last_name}` : "Student");
-  const [studentGrade, setStudentGrade] = useState((params.grade_level as string) || "Grade Level");
-
-  useEffect(() => {
-    const loadFromStorage = async () => {
-      if (!studentId) {
-        const storedId = await AsyncStorage.getItem('studentId');
-        if (storedId) setStudentId(storedId);
-        
-        const firstName = await AsyncStorage.getItem('studentFirstName');
-        const lastName = await AsyncStorage.getItem('studentLastName');
-        if (firstName) setStudentName(`${firstName} ${lastName || ''}`.trim());
-        
-        const grade = await AsyncStorage.getItem('studentGrade');
-        if (grade) setStudentGrade(grade);
-      }
-    };
-    loadFromStorage();
-  }, [studentId]);
+  // Extract child details from params
+  const studentId = params.studentId as string || "";
+  const studentName = params.studentName as string || "Student";
+  const studentGrade = params.grade as string || "Grade Level";
 
   // --- REPORT STATES ---
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [reportData, setReportData] = useState<any>(null);
   const [activeTerm, setActiveTerm] = useState<string | null>(null);
 
@@ -96,17 +80,17 @@ export default function GradesScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <FontAwesome6 name="arrow-left" size={20} color="#1E293B" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Academic Report</Text>
+        <Text style={styles.headerTitle}>Child Academic Report</Text>
         <View style={{ width: 36 }} /> 
       </View>
 
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Fetching Academic Records...</Text>
+      {isLoading && (
+        <View style={[styles.loadingContainer, { position: 'absolute', top: 100, left: 0, right: 0, zIndex: 10, backgroundColor: 'rgba(248,250,252,0.7)', height: 50 }]}>
+          <ActivityIndicator size="small" color="#2563EB" />
         </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      )}
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           
           {/* Student Info Card */}
           <View style={styles.studentCard}>
@@ -164,7 +148,7 @@ export default function GradesScreen() {
                 <Text style={styles.summaryTitle}>Overall Performance</Text>
                 <View style={styles.summaryGrid}>
                   <View style={styles.summaryBox}>
-                    <Text style={styles.summaryLabel}>Student Avg</Text>
+                    <Text style={styles.summaryLabel}>Average</Text>
                     <Text style={styles.summaryValue}>{reportData.studentAverage}</Text>
                   </View>
                   <View style={styles.summaryBox}>
@@ -187,7 +171,6 @@ export default function GradesScreen() {
           )}
 
         </ScrollView>
-      )}
     </SafeAreaView>
   );
 }
@@ -202,13 +185,13 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { marginTop: 12, color: "#64748B", fontWeight: "500" },
 
-  
   studentCard: { backgroundColor: "#FFFFFF", padding: 16, borderRadius: 16, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
   studentInfoRow: { flexDirection: "row", alignItems: "center" },
   avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: "#BFDBFE", justifyContent: "center", alignItems: "center", marginRight: 16 },
   avatarText: { fontSize: 20, fontWeight: "bold", color: "#2563EB", textTransform: "uppercase" },
   studentName: { fontSize: 18, fontWeight: "bold", color: "#1E293B", marginBottom: 4 },
   studentDetail: { fontSize: 13, color: "#64748B" },
+  
   termSelector: { flexDirection: "row", gap: 10, marginBottom: 20 },
   termChip: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: "#FFFFFF", alignItems: "center", borderWidth: 1, borderColor: "#E2E8F0" },
   termChipActive: { backgroundColor: "#EFF6FF", borderColor: "#2563EB" },
@@ -229,14 +212,8 @@ const styles = StyleSheet.create({
   summaryBox: { alignItems: "center", flex: 1 },
   summaryLabel: { color: "#E0F2FE", fontSize: 12, marginBottom: 4 },
   summaryValue: { color: "#FFFFFF", fontSize: 24, fontWeight: "bold" },
-  summarySubValue: { fontSize: 14, color: "#93C5FD", fontWeight: "normal" },
   
-  remarksCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#E2E8F0", borderStyle: "dashed" },
-  remarkHeader: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  remarkTitle: { fontSize: 14, fontWeight: "bold", color: "#475569", marginLeft: 8 },
-  remarkText: { fontSize: 14, color: "#64748B", fontStyle: "italic", lineHeight: 22 },
-
-  emptyStateContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 50 },
-  emptyStateTitle: { fontSize: 18, fontWeight: "bold", color: "#1E293B", marginTop: 16 },
-  emptyStateSub: { fontSize: 13, color: "#64748B", marginTop: 8, textAlign: "center", paddingHorizontal: 20, lineHeight: 20 }
+  emptyStateContainer: { alignItems: "center", marginTop: 40, padding: 20 },
+  emptyStateTitle: { fontSize: 18, fontWeight: "bold", color: "#475569", marginTop: 16 },
+  emptyStateSub: { fontSize: 14, color: "#94A3B8", textAlign: "center", marginTop: 8 }
 });

@@ -31,7 +31,7 @@ export default function TeacherAttendanceScreen() {
   const [students, setStudents] = useState<any[]>([]);
   const [attendanceDate, setAttendanceDate] = useState(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
   });
   
   const [attendanceData, setAttendanceData] = useState<Record<string, 'Present' | 'Absent'>>({});
@@ -394,7 +394,10 @@ export default function TeacherAttendanceScreen() {
                 <Text style={styles.reportTitle}>Monthly Attendance Report</Text>
                 {monthlyReport && (
                   <Text style={styles.reportSubtitle}>
-                    {new Date(monthlyReport.startDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    {(() => {
+                      const d = new Date(monthlyReport.startDate);
+                      return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                    })()}
                   </Text>
                 )}
               </View>

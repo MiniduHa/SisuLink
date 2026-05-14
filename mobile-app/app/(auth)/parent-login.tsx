@@ -93,7 +93,7 @@ export default function ParentLoginScreen() {
                 <Text style={{ color: "#1E40AF" }}>Sisu</Text>
                 <Text style={{ color: "#E0F2FE" }}>Link</Text>
               </Text>
-              <Text style={styles.tagline}>Connecting Education, Empowering Futures</Text>
+              <Text style={styles.tagline}>Parent Portal</Text>
             </View>
 
             {/* Bottom White Card Section */}

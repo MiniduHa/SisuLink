@@ -60,6 +60,20 @@ export default function ChildDetailsScreen() {
   const grade = profileData?.student?.grade || initialGrade;
   const avatarUrl = profileData?.student?.avatarUrl || initialAvatarUrl;
 
+  const getGradeColor = (grade: string) => {
+    if (grade === 'A' || grade === 'A+') return '#059669';
+    if (grade === 'B') return '#2563EB';
+    if (grade === 'C') return '#D97706';
+    return '#EF4444';
+  };
+
+  const getGradeBg = (grade: string) => {
+    if (grade === 'A' || grade === 'A+') return '#D1FAE5';
+    if (grade === 'B') return '#EFF6FF';
+    if (grade === 'C') return '#FEF3C7';
+    return '#FEE2E2';
+  };
+
   const fullReport = {
     ...(profileData?.academics || {}),
     attendance: profileData?.academics?.attendance || 0,
@@ -307,22 +321,34 @@ export default function ChildDetailsScreen() {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Mark Report ({fullReport.term})</Text>
+        <View style={[styles.sectionHeaderRow, { marginBottom: 10 }]}>
+          <Text style={styles.sectionTitle}>Mark Report ({fullReport.term})</Text>
+          <TouchableOpacity 
+            style={styles.viewReportBtn}
+            onPress={() => router.push({
+              pathname: "/(parent-tabs)/child-report",
+              params: { studentId, studentName, grade }
+            })}
+          >
+            <Text style={styles.viewReportBtnText}>View Report</Text>
+            <Feather name="chevron-right" size={14} color="#2563EB" />
+          </TouchableOpacity>
+        </View>
         <View style={styles.card}>
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderText, { flex: 2 }]}>Subject</Text>
-            <Text style={[styles.tableHeaderText, { flex: 1, textAlign: "center" }]}>Class Avg</Text>
+            <Text style={[styles.tableHeaderText, { flex: 1.5, textAlign: "center" }]}>Remarks</Text>
             <Text style={[styles.tableHeaderText, { flex: 1, textAlign: "right" }]}>Marks</Text>
           </View>
           
           {fullReport.subjects.map((sub: any, idx: number) => (
             <View key={idx} style={styles.tableRow}>
-              <Text style={[styles.subjectName, { flex: 2 }]}>{sub.name}</Text>
-              <Text style={[styles.classAvg, { flex: 1, textAlign: "center" }]}>{sub.average}%</Text>
+              <Text style={[styles.subjectName, { flex: 2 }]} numberOfLines={1}>{sub.name}</Text>
+              <Text style={[styles.tableCellRemarksSummary, { flex: 1.5, textAlign: "center" }]} numberOfLines={1}>{sub.remarks || "-"}</Text>
               <View style={[styles.scoreBlock, { flex: 1, justifyContent: "flex-end" }]}>
                 <Text style={styles.subjectMarks}>{sub.marks}</Text>
-                <View style={[styles.gradeBadge, { backgroundColor: sub.grade === 'A' ? '#D1FAE5' : '#EFF6FF' }]}>
-                  <Text style={[styles.gradeText, { color: sub.grade === 'A' ? '#059669' : '#2563EB' }]}>{sub.grade}</Text>
+                <View style={[styles.gradeBadge, { backgroundColor: getGradeBg(sub.grade) }]}>
+                  <Text style={[styles.gradeText, { color: getGradeColor(sub.grade) }]}>{sub.grade}</Text>
                 </View>
               </View>
             </View>
@@ -429,5 +455,10 @@ const styles = StyleSheet.create({
 
   activityRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
   bulletPoint: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#2563EB", marginRight: 10 },
-  activityText: { fontSize: 14, color: "#1E293B", fontWeight: "500" }
+  activityText: { fontSize: 14, color: "#1E293B", fontWeight: "500" },
+  
+  sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingRight: 5 },
+  viewReportBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#EFF6FF", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: "#DBEAFE" },
+  viewReportBtnText: { fontSize: 12, color: "#2563EB", fontWeight: "bold", marginRight: 2 },
+  tableCellRemarksSummary: { fontSize: 12, color: "#64748B" }
 });

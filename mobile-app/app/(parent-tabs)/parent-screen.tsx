@@ -27,7 +27,7 @@ export default function ParentDashboard() {
   if (params.email) globalEmailCache = params.email as string;
   const userEmail = globalEmailCache;
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState<any>({
     parent: {
       full_name: (params.full_name as string) || "Parent",
@@ -97,13 +97,7 @@ export default function ParentDashboard() {
     child_ids: JSON.stringify(dashboardData.children?.map((c: any) => c.studentId) || [])
   });
 
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#2563EB" />
-      </View>
-    );
-  }
+
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -190,36 +184,12 @@ export default function ParentDashboard() {
                       <Text style={styles.statValue}>{currentAcademics.attendance}</Text>
                       <Text style={styles.statLabel}>Attendance</Text>
                     </View>
-                    <View style={styles.statBox}>
-                      <View style={[styles.statIconBg, { backgroundColor: "#FEF3C7" }]}><FontAwesome6 name="star" size={16} color="#D97706" /></View>
-                      <Text style={styles.statValue}>{currentAcademics.avgGrade}</Text>
-                      <Text style={styles.statLabel}>Avg Grade</Text>
-                    </View>
+
                     <View style={styles.statBox}>
                       <View style={[styles.statIconBg, { backgroundColor: "#DBEAFE" }]}><FontAwesome6 name="trophy" size={16} color="#2563EB" /></View>
                       <Text style={styles.statValue}>{currentAcademics.rank}</Text>
                       <Text style={styles.statLabel}>Class Rank</Text>
                     </View>
-                  </View>
-
-                  <View style={styles.marksCard}>
-                    <View style={styles.marksHeader}>
-                      <Text style={styles.marksTitle}>Recent Results ({currentAcademics.term})</Text>
-                    </View>
-                    {currentAcademics.subjects.map((sub: any, idx: number) => (
-                      <View key={idx}>
-                        <View style={styles.subjectRow}>
-                          <Text style={styles.subjectName}>{sub.name}</Text>
-                          <View style={styles.scoreBlock}>
-                            <Text style={styles.subjectMarks}>{sub.marks}%</Text>
-                            <View style={[styles.gradeBadge, { backgroundColor: sub.grade === 'A' || sub.grade === 'A+' ? '#D1FAE5' : '#EFF6FF' }]}>
-                              <Text style={[styles.gradeText, { color: sub.grade === 'A' || sub.grade === 'A+' ? '#059669' : '#2563EB' }]}>{sub.grade}</Text>
-                            </View>
-                          </View>
-                        </View>
-                        {idx < currentAcademics.subjects.length - 1 && <View style={styles.subjectDivider} />}
-                      </View>
-                    ))}
                   </View>
                 </View>
               )}
@@ -410,5 +380,12 @@ const styles = StyleSheet.create({
   emptyStateText: { marginTop: 12, fontSize: 15, color: "#64748B", fontWeight: "500" },
   bottomTabBar: { flexDirection: "row", justifyContent: "space-around", backgroundColor: "#FFFFFF", paddingVertical: 12, paddingHorizontal: 20, borderTopWidth: 1, borderTopColor: "#E2E8F0", position: "absolute", bottom: 0, left: 0, right: 0 },
   tabItem: { alignItems: "center", flex: 1 }, 
-  tabLabel: { fontSize: 10, marginTop: 4, fontWeight: "600" }
+  tabLabel: { fontSize: 10, marginTop: 4, fontWeight: "600" },
+
+  viewReportBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#EFF6FF", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: "#DBEAFE" },
+  viewReportBtnText: { fontSize: 12, color: "#2563EB", fontWeight: "bold", marginRight: 2 },
+  tableHeader: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#E2E8F0", paddingBottom: 10, marginBottom: 10 },
+  tableHeaderText: { fontSize: 11, fontWeight: "bold", color: "#9CA3AF", textTransform: "uppercase" },
+  tableRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F8FAFC" },
+  tableCellRemarksSummary: { fontSize: 12, color: "#64748B" }
 });

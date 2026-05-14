@@ -14,7 +14,11 @@ const formatTime = (timeStr: string) => {
 // Helper to safely format SQL dates (YYYY-MM-DDT... to YYYY-MM-DD)
 const formatSqlDate = (isoString: string) => {
   if (!isoString) return '';
-  return isoString.split('T')[0];
+  const d = new Date(isoString);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 export default function ManageCalendar() {
