@@ -39,6 +39,8 @@ export default function ManageAnnouncements() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPhotoUploading, setIsPhotoUploading] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingAnnId, setEditingAnnId] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -159,32 +161,91 @@ export default function ManageAnnouncements() {
     }
 
     try {
-      const response = await fetch(`http://172.20.10.7:5000/api/industry/${email}/announcements`, {
-        method: 'POST',
+      const url = isEditMode 
+        ? `http://172.20.10.7:5000/api/industry/announcements/${editingAnnId}`
+        : `http://172.20.10.7:5000/api/industry/${email}/announcements`;
+      const method = isEditMode ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
 
       if (response.ok) {
-        Alert.alert("Success", "Announcement posted successfully!");
+        Alert.alert("Success", isEditMode ? "Announcement updated successfully! Pending admin approval." : "Announcement posted successfully!");
         setIsModalOpen(false);
         setFormData({ title: '', description: '', type: 'Seminar', target_school_id: 'All', cover_photo: '' });
+        setIsEditMode(false);
+        setEditingAnnId(null);
         fetchData();
       } else {
         const errorData = await response.json();
-        Alert.alert("Error", errorData.error || "Failed to post announcement.");
+        Alert.alert("Error", errorData.error || "Failed to submit announcement.");
       }
     } catch (error) {
-      console.error("Post error:", error);
+      console.error("Submit announcement error:", error);
       Alert.alert("Error", "Network error.");
     }
+  };
+
+  const handleEditPress = (ann: any) => {
+    setFormData({
+      title: ann.title || '',
+      description: ann.description || '',
+      type: ann.type || 'Seminar',
+      target_school_id: ann.target_school_id || 'All',
+      cover_photo: ann.cover_photo || ''
+    });
+    setEditingAnnId(ann.id);
+    setIsEditMode(true);
+    setIsModalOpen(true);
+  };
+
+  const handleDeletePress = (annId: number) => {
+    Alert.alert(
+      "Confirm Delete",
+      "Are you sure you want to delete this announcement?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const response = await fetch(`http://172.20.10.7:5000/api/industry/announcements/${annId}`, {
+                method: 'DELETE'
+              });
+              if (response.ok) {
+                Alert.alert("Deleted", "Announcement deleted successfully.");
+                fetchData();
+              } else {
+                const errorData = await response.json();
+                Alert.alert("Error", errorData.error || "Failed to delete announcement.");
+              }
+            } catch (error) {
+              console.error("Delete announcement error:", error);
+              Alert.alert("Error", "Network error.");
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Announcements</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setIsModalOpen(true)}>
+        <TouchableOpacity 
+          style={styles.addBtn} 
+          onPress={() => {
+            setIsEditMode(false);
+            setEditingAnnId(null);
+            setFormData({ title: '', description: '', type: 'Seminar', target_school_id: 'All', cover_photo: '' });
+            setIsModalOpen(true);
+          }}
+        >
           <Feather name="plus" size={24} color="#FFF" />
         </TouchableOpacity>
       </View>
@@ -200,7 +261,15 @@ export default function ManageAnnouncements() {
             </View>
             <Text style={styles.emptyTitle}>No Announcements</Text>
             <Text style={styles.emptySubtitle}>You haven't posted any announcements yet. Create one to share events with students.</Text>
-            <TouchableOpacity style={styles.createFirstBtn} onPress={() => setIsModalOpen(true)}>
+            <TouchableOpacity 
+              style={styles.createFirstBtn} 
+              onPress={() => {
+                setIsEditMode(false);
+                setEditingAnnId(null);
+                setFormData({ title: '', description: '', type: 'Seminar', target_school_id: 'All', cover_photo: '' });
+                setIsModalOpen(true);
+              }}
+            >
               <Text style={styles.createFirstBtnText}>Post Announcement</Text>
             </TouchableOpacity>
           </View>
@@ -223,6 +292,20 @@ export default function ManageAnnouncements() {
               </View>
               <View style={styles.annFooter}>
                 <Text style={styles.annDate}>Posted {new Date(ann.created_at).toLocaleDateString()}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <TouchableOpacity 
+                    onPress={() => handleEditPress(ann)} 
+                    style={{ padding: 6, backgroundColor: '#EFF6FF', borderRadius: 8 }}
+                  >
+                    <Feather name="edit-2" size={14} color="#2563EB" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={() => handleDeletePress(ann.id)} 
+                    style={{ padding: 6, backgroundColor: '#FEF2F2', borderRadius: 8 }}
+                  >
+                    <Feather name="trash-2" size={14} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           ))
@@ -240,9 +323,9 @@ export default function ManageAnnouncements() {
               <TouchableOpacity onPress={() => setIsModalOpen(false)}>
                 <Feather name="x" size={24} color="#1E293B" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>New Announcement</Text>
+              <Text style={styles.modalTitle}>{isEditMode ? "Edit Announcement" : "New Announcement"}</Text>
               <TouchableOpacity onPress={handlePostAnnouncement}>
-                <Text style={styles.postBtnText}>Post</Text>
+                <Text style={styles.postBtnText}>{isEditMode ? "Save" : "Post"}</Text>
               </TouchableOpacity>
             </View>
 

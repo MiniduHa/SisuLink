@@ -165,34 +165,6 @@ export default function ParentDashboard() {
                 })}
               </ScrollView>
 
-              {currentAcademics && (
-                <View style={styles.academicSection}>
-                  <View style={styles.sectionHeaderNew}>
-                    <Text style={styles.sectionTitleNew}>ACADEMIC OVERVIEW</Text>
-                    <TouchableOpacity onPress={() => {
-                      if (!activeChildId) return;
-                      const child = (dashboardData.children || []).find((c: any) => c.studentId === activeChildId);
-                      router.push({ pathname: "/(parent-tabs)/child-details", params: { studentId: activeChildId, studentName: child?.name || "Student", grade: child?.class || "", avatarUrl: "null", parentEmail: userEmail, parentName: userName } })
-                    }}>
-                      <Text style={styles.sectionLink}>Full Report</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.statsContainer}>
-                    <View style={styles.statBox}>
-                      <View style={[styles.statIconBg, { backgroundColor: "#D1FAE5" }]}><FontAwesome6 name="calendar-check" size={16} color="#059669" /></View>
-                      <Text style={styles.statValue}>{currentAcademics.attendance}</Text>
-                      <Text style={styles.statLabel}>Attendance</Text>
-                    </View>
-
-                    <View style={styles.statBox}>
-                      <View style={[styles.statIconBg, { backgroundColor: "#DBEAFE" }]}><FontAwesome6 name="trophy" size={16} color="#2563EB" /></View>
-                      <Text style={styles.statValue}>{currentAcademics.rank}</Text>
-                      <Text style={styles.statLabel}>Class Rank</Text>
-                    </View>
-                  </View>
-                </View>
-              )}
 
               {dashboardData.urgentNotices && dashboardData.urgentNotices.length > 0 && dashboardData.urgentNotices.map((notice: any) => (
                 <View key={notice.id} style={styles.urgentNoticeCard}>

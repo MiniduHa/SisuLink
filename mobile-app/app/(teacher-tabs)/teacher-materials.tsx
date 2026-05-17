@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from "react";
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, 
-  TextInput, ActivityIndicator, Dimensions, Linking, Alert, Modal
+  TextInput, ActivityIndicator, Dimensions, Linking, Alert, Modal,
+  KeyboardAvoidingView, Platform
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather } from "@expo/vector-icons";
@@ -40,7 +41,9 @@ export default function TeacherMaterialsScreen() {
 
   // Fetch Teacher Profile & Materials
   const fetchProfileAndMaterials = async () => {
-    setIsLoading(true);
+    if (materials.length === 0) {
+      setIsLoading(true);
+    }
     try {
       // 1. Fetch Teacher Profile (To get Department and Subject)
       const profRes = await fetch(`http://172.20.10.7:5000/api/teacher/profile/${email}`);
@@ -48,8 +51,28 @@ export default function TeacherMaterialsScreen() {
         const profData = await profRes.json();
         setTeacherProfile(profData);
         
-        // Auto-set the subject for the new material form
-        setNewMaterial(prev => ({ ...prev, subject: profData.subject || "General" }));
+        // Determine default grade
+        let defGrade = "Grade 10";
+        if (profData.teaching_grades && profData.teaching_grades.length > 0) {
+          const sorted = [...profData.teaching_grades].sort((a, b) => {
+            const numA = parseInt(a.replace(/\D/g, ""), 10) || 0;
+            const numB = parseInt(b.replace(/\D/g, ""), 10) || 0;
+            return numA - numB;
+          });
+          defGrade = sorted[0];
+        } else if (profData.department) {
+          if (profData.department === "Senior Secondary (O/L)") defGrade = "Grade 10";
+          else if (profData.department.includes("A/L")) defGrade = "Grade 12";
+          else if (profData.department === "Primary Section") defGrade = "Grade 1";
+          else if (profData.department === "Junior Secondary Section") defGrade = "Grade 6";
+        }
+        
+        // Auto-set the subject and default grade for the new material form
+        setNewMaterial(prev => ({ 
+          ...prev, 
+          subject: profData.subject || "General",
+          gradeLevel: defGrade
+        }));
       }
 
       // 2. Fetch the Teacher's Uploaded Materials
@@ -72,21 +95,28 @@ export default function TeacherMaterialsScreen() {
   );
 
   // --- DYNAMIC GRADE FILTERING ---
-  // Calculates which grades to show based on the teacher's department
-  let availableGrades = Array.from({ length: 13 }, (_, i) => `Grade ${i + 1}`);
-  if (teacherProfile?.department === "Senior Secondary (O/L)") {
-    availableGrades = ["Grade 10", "Grade 11"];
-  } else if (teacherProfile?.department && teacherProfile.department.includes("A/L")) {
-    availableGrades = ["Grade 12", "Grade 13"];
-  } else if (teacherProfile?.department === "Primary Section") {
-    availableGrades = ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5"];
-  } else if (teacherProfile?.department === "Junior Secondary Section") {
-    availableGrades = ["Grade 6", "Grade 7", "Grade 8", "Grade 9"];
+  // Calculates which grades to show based on the teacher's actual teaching grades
+  let availableGrades: string[] = [];
+  if (teacherProfile?.teaching_grades && teacherProfile.teaching_grades.length > 0) {
+    availableGrades = [...teacherProfile.teaching_grades].sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, ""), 10) || 0;
+      const numB = parseInt(b.replace(/\D/g, ""), 10) || 0;
+      return numA - numB;
+    });
+  } else if (teacherProfile?.department) {
+    if (teacherProfile.department === "Senior Secondary (O/L)") {
+      availableGrades = ["Grade 10", "Grade 11"];
+    } else if (teacherProfile.department.includes("A/L")) {
+      availableGrades = ["Grade 12", "Grade 13"];
+    } else if (teacherProfile.department === "Primary Section") {
+      availableGrades = ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5"];
+    } else if (teacherProfile.department === "Junior Secondary Section") {
+      availableGrades = ["Grade 6", "Grade 7", "Grade 8", "Grade 9"];
+    }
   }
 
-  // Ensure the default selected grade is valid for this teacher
-  if (availableGrades.length > 0 && !newMaterial.gradeLevel) {
-    setNewMaterial(prev => ({ ...prev, gradeLevel: availableGrades[0] }));
+  if (availableGrades.length === 0) {
+    availableGrades = Array.from({ length: 13 }, (_, i) => `Grade ${i + 1}`);
   }
 
   const handlePickFile = async () => {
@@ -276,91 +306,96 @@ export default function TeacherMaterialsScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalBody}>
-            
-            <Text style={styles.inputLabel}>Material Title</Text>
-            <TextInput 
-              style={styles.textInput} 
-              placeholder="e.g. Term 1 Algebra Notes"
-              value={newMaterial.title}
-              onChangeText={(t) => setNewMaterial({...newMaterial, title: t})}
-            />
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ flex: 1 }}
+          >
+            <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+              
+              <Text style={styles.inputLabel}>Material Title</Text>
+              <TextInput 
+                style={styles.textInput} 
+                placeholder="e.g. Term 1 Algebra Notes"
+                value={newMaterial.title}
+                onChangeText={(t) => setNewMaterial({...newMaterial, title: t})}
+              />
 
-            {/* DYNAMIC GRADE SELECTOR */}
-            <View style={styles.row}>
-              <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={styles.inputLabel}>Target Grade</Text>
-                <View style={styles.selectBox}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {availableGrades.map(grade => (
-                      <TouchableOpacity 
-                        key={grade} 
-                        style={[styles.pillBtn, newMaterial.gradeLevel === grade && styles.pillBtnActive]}
-                        onPress={() => setNewMaterial({...newMaterial, gradeLevel: grade})}
-                      >
-                        <Text style={[styles.pillText, newMaterial.gradeLevel === grade && styles.pillTextActive]}>{grade}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+              {/* DYNAMIC GRADE SELECTOR */}
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={styles.inputLabel}>Target Grade</Text>
+                  <View style={styles.selectBox}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {availableGrades.map(grade => (
+                        <TouchableOpacity 
+                          key={grade} 
+                          style={[styles.pillBtn, newMaterial.gradeLevel === grade && styles.pillBtnActive]}
+                          onPress={() => setNewMaterial({...newMaterial, gradeLevel: grade})}
+                        >
+                          <Text style={[styles.pillText, newMaterial.gradeLevel === grade && styles.pillTextActive]}>{grade}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  <Text style={styles.helperText}>Filtered based on your assigned section ({teacherProfile?.department})</Text>
                 </View>
-                <Text style={styles.helperText}>Filtered based on your assigned section ({teacherProfile?.department})</Text>
               </View>
-            </View>
 
-            <Text style={styles.inputLabel}>Material Type</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-              {materialTypes.map(type => (
-                <TouchableOpacity 
-                  key={type} 
-                  style={[styles.typeBtn, newMaterial.materialType === type && styles.typeBtnActive]}
-                  onPress={() => setNewMaterial({...newMaterial, materialType: type, fileName: "", fileUri: "", externalLink: ""})}
-                >
-                  <FontAwesome6 name={getIconForType(type)} size={14} color={newMaterial.materialType === type ? "#FFFFFF" : "#64748B"} style={{ marginRight: 6 }} />
-                  <Text style={[styles.typeText, newMaterial.materialType === type && styles.typeTextActive]}>{type}</Text>
-                </TouchableOpacity>
-              ))}
+              <Text style={styles.inputLabel}>Material Type</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+                {materialTypes.map(type => (
+                  <TouchableOpacity 
+                    key={type} 
+                    style={[styles.typeBtn, newMaterial.materialType === type && styles.typeBtnActive]}
+                    onPress={() => setNewMaterial({...newMaterial, materialType: type, fileName: "", fileUri: "", externalLink: ""})}
+                  >
+                    <FontAwesome6 name={getIconForType(type)} size={14} color={newMaterial.materialType === type ? "#FFFFFF" : "#64748B"} style={{ marginRight: 6 }} />
+                    <Text style={[styles.typeText, newMaterial.materialType === type && styles.typeTextActive]}>{type}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.inputLabel}>Attachment</Text>
+              {newMaterial.materialType === "External Link" ? (
+                 <View>
+                   <TextInput 
+                     style={styles.textInput} 
+                     placeholder="Paste Google Drive, YouTube, or Web URL"
+                     value={newMaterial.externalLink}
+                     onChangeText={(t) => setNewMaterial({...newMaterial, externalLink: t})}
+                     autoCapitalize="none"
+                     keyboardType="url"
+                   />
+                   <Text style={[styles.helperText, { marginTop: -15, marginBottom: 20 }]}>Students will be redirected to this link.</Text>
+                 </View>
+              ) : (
+                 <TouchableOpacity style={styles.uploadBox} onPress={handlePickFile}>
+                   <Feather name="upload-cloud" size={32} color="#9CA3AF" />
+                   <Text style={styles.uploadText}>
+                     {newMaterial.fileName ? newMaterial.fileName : "Tap to browse files"}
+                   </Text>
+                   <Text style={styles.uploadSubtext}>Supports PDF, DOCX, Images</Text>
+                 </TouchableOpacity>
+              )}
+
+              <Text style={styles.inputLabel}>Optional Instructions for Students</Text>
+              <TextInput 
+                style={[styles.textInput, { height: 100, textAlignVertical: 'top' }]} 
+                placeholder="e.g. Please complete this worksheet before Friday's class..."
+                multiline
+                value={newMaterial.description}
+                onChangeText={(t) => setNewMaterial({...newMaterial, description: t})}
+              />
+
+              {isUploading && (
+                <View style={styles.uploadingOverlay}>
+                  <ActivityIndicator size="large" color="#2563EB" />
+                  <Text style={styles.uploadingText}>Uploading secure file to cloud...</Text>
+                </View>
+              )}
+
             </ScrollView>
-
-            <Text style={styles.inputLabel}>Attachment</Text>
-            {newMaterial.materialType === "External Link" ? (
-               <View>
-                 <TextInput 
-                   style={styles.textInput} 
-                   placeholder="Paste Google Drive, YouTube, or Web URL"
-                   value={newMaterial.externalLink}
-                   onChangeText={(t) => setNewMaterial({...newMaterial, externalLink: t})}
-                   autoCapitalize="none"
-                   keyboardType="url"
-                 />
-                 <Text style={[styles.helperText, { marginTop: -15, marginBottom: 20 }]}>Students will be redirected to this link.</Text>
-               </View>
-            ) : (
-               <TouchableOpacity style={styles.uploadBox} onPress={handlePickFile}>
-                 <Feather name="upload-cloud" size={32} color="#9CA3AF" />
-                 <Text style={styles.uploadText}>
-                   {newMaterial.fileName ? newMaterial.fileName : "Tap to browse files"}
-                 </Text>
-                 <Text style={styles.uploadSubtext}>Supports PDF, DOCX, Images</Text>
-               </TouchableOpacity>
-            )}
-
-            <Text style={styles.inputLabel}>Optional Instructions for Students</Text>
-            <TextInput 
-              style={[styles.textInput, { height: 100, textAlignVertical: 'top' }]} 
-              placeholder="e.g. Please complete this worksheet before Friday's class..."
-              multiline
-              value={newMaterial.description}
-              onChangeText={(t) => setNewMaterial({...newMaterial, description: t})}
-            />
-
-            {isUploading && (
-              <View style={styles.uploadingOverlay}>
-                <ActivityIndicator size="large" color="#2563EB" />
-                <Text style={styles.uploadingText}>Uploading secure file to cloud...</Text>
-              </View>
-            )}
-
-          </ScrollView>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>

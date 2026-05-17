@@ -40,7 +40,7 @@ export default function GradesScreen() {
   }, [studentId]);
 
   // --- REPORT STATES ---
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [reportData, setReportData] = useState<any>(null);
   const [activeTerm, setActiveTerm] = useState<string | null>(null);
 
@@ -51,7 +51,9 @@ export default function GradesScreen() {
       return;
     }
     
-    setIsLoading(true);
+    if (reportData === null) {
+      setIsLoading(true);
+    }
     try {
       const url = activeTerm 
         ? `http://172.20.10.7:5000/api/student/${studentId}/academic-report?term=${activeTerm}`

@@ -16,7 +16,7 @@ export default function SuperAdminDashboard() {
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
   const [recentSchools, setRecentSchools] = useState<any[]>([]);
   const [selectedSchool, setSelectedSchool] = useState<any | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   // --- FETCH LIVE DATA ON LOAD ---
   useEffect(() => {

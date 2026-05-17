@@ -367,7 +367,7 @@ export default function TeacherMessagesScreen() {
                 ))}
               </View>
 
-              <ScrollView>
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                 {availableContacts
                   .filter(c => {
                     if (contactFilter === "All") return true;
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
   tabItem: { alignItems: "center", flex: 1 },
   tabLabel: { fontSize: 10, marginTop: 4, color: "#64748B" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  modalContent: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, minHeight: "50%" },
+  modalContent: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, height: "80%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: "bold" },
   contactRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },

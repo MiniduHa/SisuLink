@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Users, GraduationCap, BookOpen, Calendar as CalendarIcon, Megaphone, ChevronRight, ClipboardCheck, UserMinus, Clock, UserCheck, X, BarChart3, Inbox, TrendingUp, Activity, Building2 } from 'lucide-react';
+import { Users, GraduationCap, BookOpen, Calendar as CalendarIcon, Megaphone, ChevronRight, ClipboardCheck, Clock, UserCheck, X, BarChart3, Inbox, TrendingUp, Activity, Building2 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function SchoolAdminDashboard() {
   const [selectedStatBreakdown, setSelectedStatBreakdown] = useState<any | null>(null);
   const [adminData, setAdminData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [trendData, setTrendData] = useState<any[]>([]);
   const [attendanceData, setAttendanceData] = useState<any[]>([]);
 
@@ -96,13 +96,10 @@ export default function SchoolAdminDashboard() {
       id: 'student_attendance', title: "Student Attendance", value: `${dashboardData.dailyStats.studentAttendance.percentage}%`, 
       subtext: `${dashboardData.dailyStats.studentAttendance.present} / ${dashboardData.dailyStats.studentAttendance.total} Present`, 
       icon: ClipboardCheck, color: "bg-emerald-500", breakdownTitle: "Today's Student Attendance",
-      breakdown: [ { label: "Module pending implementation", count: "0", percentage: 0 } ]
-    },
-    { 
-      id: 'teacher_attendance', title: "Teacher Attendance", value: `${dashboardData.dailyStats.teacherAttendance.percentage}%`, 
-      subtext: `${dashboardData.dailyStats.teacherAttendance.present} / ${dashboardData.dailyStats.teacherAttendance.total} Present`, 
-      icon: Users, color: "bg-teal-500", breakdownTitle: "Today's Staff Attendance",
-      breakdown: [ { label: "Module pending implementation", count: "0", percentage: 0 } ]
+      breakdown: [ 
+        { label: "Present Students", count: dashboardData.dailyStats.studentAttendance.present, percentage: dashboardData.dailyStats.studentAttendance.percentage },
+        { label: "Absent/Unmarked", count: dashboardData.dailyStats.studentAttendance.total - dashboardData.dailyStats.studentAttendance.present, percentage: 100 - dashboardData.dailyStats.studentAttendance.percentage }
+      ]
     },
     { 
       id: 'pending_internships', title: "Job Approvals", value: dashboardData.dailyStats.pendingInternships.toString(), 
@@ -111,16 +108,12 @@ export default function SchoolAdminDashboard() {
       breakdown: [ { label: "Waiting for review", count: dashboardData.dailyStats.pendingInternships, percentage: 100 } ]
     },
     { 
-      id: 'staff_leave', title: "Staff on Leave", value: dashboardData.dailyStats.staffLeave.approved.toString(), 
-      subtext: `Pending Requests: ${dashboardData.dailyStats.staffLeave.pending}`, 
-      icon: UserMinus, color: "bg-rose-500", breakdownTitle: "Leave Status",
-      breakdown: [ { label: "Module pending implementation", count: "0", percentage: 0 } ]
-    },
-    { 
       id: 'today_events', title: "Today's Events", value: dashboardData.dailyStats.eventsToday.count.toString(), 
       subtext: `Next: ${dashboardData.dailyStats.eventsToday.nextEvent}`, 
       icon: Clock, color: "bg-orange-500", breakdownTitle: "Event Schedule",
-      breakdown: [ { label: "Module pending implementation", count: "0", percentage: 0 } ]
+      breakdown: [ 
+        { label: "Events Today", count: dashboardData.dailyStats.eventsToday.count, percentage: dashboardData.dailyStats.eventsToday.count > 0 ? 100 : 0 }
+      ]
     },
   ];
 
@@ -179,7 +172,7 @@ export default function SchoolAdminDashboard() {
       {/* --- GRID 2: TODAY'S SNAPSHOT --- */}
       <div>
         <h2 className="text-lg font-bold text-slate-800 mb-4 px-1">Today's Overview</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {dynamicDailyStats.map((stat, index) => {
             const Icon = stat.icon;
             return (
@@ -214,75 +207,89 @@ export default function SchoolAdminDashboard() {
         
         {/* ACADEMIC TREND ANALYSIS CHART */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-100 p-2 rounded-xl text-blue-600">
-                <TrendingUp size={22} />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-800">Academic Trend Analysis</h2>
-                <p className="text-sm text-slate-500 font-medium">Student performance by level</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 text-xs font-bold">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-                <span className="text-slate-600">O/L</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
-                <span className="text-slate-600">A/L</span>
-              </div>
-            </div>
-          </div>
+          {(() => {
+            const gradeKeys = Array.from(
+              new Set(
+                trendData.flatMap(d => Object.keys(d).filter(k => k !== 'term'))
+              )
+            ).sort((a: string, b: string) => {
+              const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+              const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+              return numA - numB;
+            });
 
-          <div className="h-[300px] w-full mt-auto">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={trendData}
-                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis 
-                  dataKey="term" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
-                  dy={10}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
-                  domain={[0, 100]}
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                    padding: '12px'
-                  }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="OL" 
-                  stroke="#3b82f6" 
-                  strokeWidth={3} 
-                  dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="AL" 
-                  stroke="#10b981" 
-                  strokeWidth={3} 
-                  dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+            const lineColors = [
+              "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", 
+              "#ec4899", "#14b8a6", "#6366f1", "#f97316", "#06b6d4"
+            ];
+
+            return (
+              <>
+                <div className="flex items-center justify-between mb-6 gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-blue-100 p-2 rounded-xl text-blue-600">
+                      <TrendingUp size={22} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-800">Academic Trend Analysis</h2>
+                      <p className="text-sm text-slate-500 font-medium">Student performance by level</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 text-[10px] sm:text-xs font-bold flex-wrap max-w-[200px] sm:max-w-xs justify-end">
+                    {gradeKeys.map((grade, idx) => (
+                      <div key={grade} className="flex items-center gap-1.5 shrink-0">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: lineColors[idx % lineColors.length] }}></div>
+                        <span className="text-slate-600">{grade}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-[300px] w-full mt-auto">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={trendData}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis 
+                        dataKey="term" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                        dy={10}
+                      />
+                      <YAxis 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                        domain={[0, 100]}
+                      />
+                      <Tooltip 
+                        contentStyle={{ 
+                          borderRadius: '12px', 
+                          border: 'none', 
+                          boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                          padding: '12px'
+                        }}
+                      />
+                      {gradeKeys.map((grade, idx) => (
+                        <Line 
+                          key={grade}
+                          type="monotone" 
+                          dataKey={grade} 
+                          stroke={lineColors[idx % lineColors.length]} 
+                          strokeWidth={3} 
+                          dot={{ r: 4, fill: lineColors[idx % lineColors.length], strokeWidth: 2, stroke: '#fff' }}
+                          activeDot={{ r: 6, strokeWidth: 0 }}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         {/* ATTENDANCE HEALTH BAR CHART */}
@@ -364,8 +371,21 @@ export default function SchoolAdminDashboard() {
           <div className="p-5 flex-1 flex flex-col gap-4">
             {dashboardData.notices.length > 0 ? (
               dashboardData.notices.map((notice: any, idx: number) => (
-                <div key={idx} className="p-4 border border-slate-100 rounded-xl">
-                  {notice.title} {/* Map actual fields when built */}
+                <div key={idx} className="p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-all flex justify-between items-start gap-4 animate-in fade-in duration-300">
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-slate-800 text-sm">{notice.title}</h4>
+                    <p className="text-xs text-slate-500 line-clamp-2">{notice.content}</p>
+                    <div className="flex items-center gap-2 mt-2 pt-1 text-[10px] text-slate-400 font-semibold">
+                      <span>By {notice.posted_by || 'Admin'}</span>
+                      <span>•</span>
+                      <span>{new Date(notice.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    notice.priority === 'High' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    {notice.priority}
+                  </span>
                 </div>
               ))
             ) : (
@@ -391,8 +411,24 @@ export default function SchoolAdminDashboard() {
           <div className="p-5 flex-1 flex flex-col gap-4">
             {dashboardData.events.length > 0 ? (
               dashboardData.events.map((evt: any, idx: number) => (
-                <div key={idx} className="p-4 border border-slate-100 rounded-xl">
-                  {evt.title} {/* Map actual fields when built */}
+                <div key={idx} className="p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-all flex gap-4 animate-in fade-in duration-300">
+                  <div className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg flex flex-col items-center justify-center shrink-0 min-w-[56px] border border-blue-100/50">
+                    <span className="text-xs font-black uppercase">{new Date(evt.event_date).toLocaleDateString('en-US', { month: 'short' })}</span>
+                    <span className="text-lg font-black">{new Date(evt.event_date).getDate()}</span>
+                  </div>
+                  <div className="space-y-1 flex-1">
+                    <h4 className="font-bold text-slate-800 text-sm">{evt.title}</h4>
+                    <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-1">
+                      <Clock size={12} className="text-slate-400" />
+                      <span>{evt.time_from} - {evt.time_to}</span>
+                      {evt.location && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span className="font-medium text-slate-500">{evt.location}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
                 </div>
               ))
             ) : (

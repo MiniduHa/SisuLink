@@ -10,7 +10,9 @@ import {
   Platform,
   Image,
   ImageBackground,
-  ActivityIndicator
+  ActivityIndicator,
+  Linking,
+  Alert
 } from "react-native";
 import { FontAwesome6, Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import WatermarkOverlay from "../../components/WatermarkOverlay";
@@ -30,8 +32,7 @@ export default function StudentScreen() {
   const [email, setEmail] = useState((params.email as string) || "");
   const [gradeLevel, setGradeLevel] = useState((params.grade as string) || "Grade 11");
   const [profilePhoto, setProfilePhoto] = useState<string | null>((params.profile_photo as string) || null);
-  
-  const studentId = (params.studentId as string) || "";
+  const [studentId, setStudentId] = useState((params.studentId as string) || "");
 
   const avatarInitials = (firstName[0] + (lastName[0] || "")).toUpperCase();
   const gradeMatch = gradeLevel.match(/\d+/);
@@ -45,7 +46,7 @@ export default function StudentScreen() {
   else if (isALevel) academicLevel = "A/L";
 
   // --- DASHBOARD DATA STATES ---
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState<any>({
     ongoingSubjects: [],
     gradesData: [],
@@ -69,18 +70,41 @@ export default function StudentScreen() {
       let isActive = true;
 
       const fetchAllData = async () => {
-        if (!studentId) return;
-        setIsLoading(true);
         try {
+          const storedId = await AsyncStorage.getItem("studentId");
+          const storedEmail = await AsyncStorage.getItem("studentEmail");
+          const storedGrade = await AsyncStorage.getItem("studentGrade");
+          const storedName = await AsyncStorage.getItem("studentName");
+
+          if (!storedId) {
+            setIsLoading(false);
+            return;
+          }
+
+          if (isActive) {
+            setStudentId(storedId);
+            if (storedEmail) setEmail(storedEmail);
+            if (storedGrade) setGradeLevel(storedGrade);
+            if (storedName) {
+              const parts = storedName.split(" ");
+              setFirstName(parts[0] || "Student");
+              setLastName(parts.slice(1).join(" ") || "");
+            }
+          }
+
+          if (dashboardData.ongoingSubjects.length === 0) {
+            setIsLoading(true);
+          }
+
           const timestamp = new Date().getTime();
           const headers = { 
             "Content-Type": "application/json"
           };
 
-          const profileRes = fetch(`http://172.20.10.7:5000/api/profile/${studentId}?t=${timestamp}`, { headers });
-          const dashboardRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/dashboard?t=${timestamp}`, { headers });
-          const materialsRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/materials?t=${timestamp}`, { headers });
-          const historyRes = fetch(`http://172.20.10.7:5000/api/student/${studentId}/attendance-history?t=${timestamp}`, { headers });
+          const profileRes = fetch(`http://172.20.10.7:5000/api/profile/${storedId}?t=${timestamp}`, { headers });
+          const dashboardRes = fetch(`http://172.20.10.7:5000/api/student/${storedId}/dashboard?t=${timestamp}`, { headers });
+          const materialsRes = fetch(`http://172.20.10.7:5000/api/student/${storedId}/materials?t=${timestamp}`, { headers });
+          const historyRes = fetch(`http://172.20.10.7:5000/api/student/${storedId}/attendance-history?t=${timestamp}`, { headers });
           
           const [profileResponse, dashboardResponse, materialsResponse, historyResponse] = await Promise.all([
             profileRes, 
@@ -112,12 +136,12 @@ export default function StudentScreen() {
       };
 
       const fetchMessages = async () => {
-        if (!email) return;
         try {
-          const response = await fetch(`http://172.20.10.7:5000/api/messages/Student/${email}`);
+          const storedEmail = await AsyncStorage.getItem("studentEmail");
+          if (!storedEmail) return;
+          const response = await fetch(`http://172.20.10.7:5000/api/messages/Student/${storedEmail}`);
           if (response.ok && isActive) {
             const data = await response.json();
-            // Show only received messages that are unread
             const receivedUnread = data.filter((m: any) => m.unread && m.sender !== 'Me');
             setMessages(receivedUnread.slice(0, 3));
           }
@@ -129,7 +153,7 @@ export default function StudentScreen() {
       fetchAllData();
       fetchMessages();
       return () => { isActive = false; };
-    }, [studentId, email])
+    }, [dashboardData.ongoingSubjects.length])
   );
 
   // --- UI STATES ---
@@ -152,10 +176,55 @@ export default function StudentScreen() {
     setCurrentDate(`${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`);
   }, []);
 
+  // Flexible subject matching helper
+  const matchesSubject = (subA: string, subB: string) => {
+    if (!subA || !subB) return false;
+    const a = subA.toLowerCase().trim();
+    const b = subB.toLowerCase().trim();
+    if (a === b) return true;
+    const aliases = [
+      ['ict', 'information technology'],
+      ['general english', 'english'],
+      ['combined mathematics', 'mathematics'],
+      ['combined maths', 'mathematics'],
+      ['git', 'information technology']
+    ];
+    for (const pair of aliases) {
+      if (pair.includes(a) && pair.includes(b)) return true;
+    }
+    return a.includes(b) || b.includes(a);
+  };
+
+  const matchesSelectedSubject = (m: any) => {
+    if (!selectedSubject?.name) return false;
+    return matchesSubject(m.subject, selectedSubject.name);
+  };
+
   // Filter materials for the selected subject
-  const currentSubjectVideos = allMaterials.filter(m => m.subject === selectedSubject?.name && (m.material_type === 'Video' || m.material_type?.toLowerCase().includes('video')));
-  const currentSubjectNotes = allMaterials.filter(m => m.subject === selectedSubject?.name && (m.material_type === 'Note' || m.material_type === 'PDF' || m.material_type?.toLowerCase().includes('note') || m.material_type?.toLowerCase().includes('pdf')));
-  const currentSubjectGeneral = allMaterials.filter(m => m.subject === selectedSubject?.name && !currentSubjectVideos.includes(m) && !currentSubjectNotes.includes(m));
+  const currentSubjectVideos = allMaterials.filter(m => matchesSelectedSubject(m) && (m.material_type === 'Video' || m.material_type?.toLowerCase().includes('video')));
+  const currentSubjectNotes = allMaterials.filter(m => matchesSelectedSubject(m) && (
+    m.material_type === 'Note' || 
+    m.material_type === 'PDF' || 
+    m.material_type?.toLowerCase().includes('note') || 
+    m.material_type?.toLowerCase().includes('pdf') || 
+    m.material_type?.toLowerCase().includes('paper') || 
+    m.material_type?.toLowerCase().includes('worksheet')
+  ));
+  const currentSubjectGeneral = allMaterials.filter(m => matchesSelectedSubject(m) && !currentSubjectVideos.includes(m) && !currentSubjectNotes.includes(m));
+
+  const handleOpenLink = (url: string) => {
+    if (!url) {
+      Alert.alert("No Link", "No attachment link provided for this material.");
+      return;
+    }
+    let cleanUrl = url.trim();
+    if (!/^https?:\/\//i.test(cleanUrl)) {
+      cleanUrl = 'http://' + cleanUrl;
+    }
+    Linking.openURL(cleanUrl).catch(() => {
+      Alert.alert("Error", "Could not open attachment link.");
+    });
+  };
 
   useEffect(() => {
     const date = new Date();
@@ -473,14 +542,14 @@ export default function StudentScreen() {
                   <Text style={styles.materialSectionTitle}>Video Lectures</Text>
                 </View>
                 {currentSubjectVideos.map(video => (
-                  <View key={video.id} style={styles.materialItem}>
+                  <TouchableOpacity key={video.id} style={styles.materialItem} onPress={() => handleOpenLink(video.file_url)} activeOpacity={0.7}>
                     <View style={styles.materialItemIconBox}><FontAwesome6 name="play" size={14} color="#EF4444" /></View>
                     <View style={styles.materialItemInfo}>
                       <Text style={styles.materialItemTitle}>{video.title}</Text>
                       <Text style={styles.materialItemSub}>{video.teacher_name || 'Teacher'}</Text>
                     </View>
-                    <TouchableOpacity style={styles.actionIconButton}><FontAwesome6 name="circle-play" size={22} color="#2563EB" /></TouchableOpacity>
-                  </View>
+                    <View style={styles.actionIconButton}><FontAwesome6 name="circle-play" size={22} color="#2563EB" /></View>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
@@ -492,14 +561,14 @@ export default function StudentScreen() {
                   <Text style={styles.materialSectionTitle}>Study Notes & PDFs</Text>
                 </View>
                 {currentSubjectNotes.map(note => (
-                  <View key={note.id} style={styles.materialItem}>
+                  <TouchableOpacity key={note.id} style={styles.materialItem} onPress={() => handleOpenLink(note.file_url)} activeOpacity={0.7}>
                     <View style={[styles.materialItemIconBox, { backgroundColor: '#EFF6FF' }]}><FontAwesome6 name="file-pdf" size={14} color="#2563EB" /></View>
                     <View style={styles.materialItemInfo}>
                       <Text style={styles.materialItemTitle}>{note.title}</Text>
                       <Text style={styles.materialItemSub}>{note.teacher_name || 'Teacher'}</Text>
                     </View>
-                    <TouchableOpacity style={styles.actionIconButton}><FontAwesome6 name="download" size={20} color="#2563EB" /></TouchableOpacity>
-                  </View>
+                    <View style={styles.actionIconButton}><FontAwesome6 name="download" size={20} color="#2563EB" /></View>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
@@ -511,14 +580,14 @@ export default function StudentScreen() {
                   <Text style={styles.materialSectionTitle}>Other Resources</Text>
                 </View>
                 {currentSubjectGeneral.map(item => (
-                  <View key={item.id} style={styles.materialItem}>
+                  <TouchableOpacity key={item.id} style={styles.materialItem} onPress={() => handleOpenLink(item.file_url)} activeOpacity={0.7}>
                     <View style={[styles.materialItemIconBox, { backgroundColor: '#F8FAFC' }]}><FontAwesome6 name="box-archive" size={14} color="#64748B" /></View>
                     <View style={styles.materialItemInfo}>
                       <Text style={styles.materialItemTitle}>{item.title}</Text>
                       <Text style={styles.materialItemSub}>{item.material_type} • {item.teacher_name || 'Teacher'}</Text>
                     </View>
-                    <TouchableOpacity style={styles.actionIconButton}><FontAwesome6 name="link" size={20} color="#2563EB" /></TouchableOpacity>
-                  </View>
+                    <View style={styles.actionIconButton}><FontAwesome6 name="link" size={20} color="#2563EB" /></View>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}

@@ -39,7 +39,7 @@ export default function SchoolCalendarScreen() {
   const [events, setEvents] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); 
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   // --- FETCH DATA ---
   useFocusEffect(
@@ -47,7 +47,9 @@ export default function SchoolCalendarScreen() {
       let isActive = true;
       const fetchEvents = async () => {
         if (!userEmail) return;
-        setIsLoading(true);
+        if (events.length === 0) {
+          setIsLoading(true);
+        }
         try {
           const timestamp = new Date().getTime();
           const response = await fetch(`http://172.20.10.7:5000/api/teacher/${userEmail}/events?t=${timestamp}`);

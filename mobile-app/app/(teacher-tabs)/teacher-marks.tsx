@@ -94,7 +94,9 @@ export default function TeacherMarksScreen() {
   const fetchClassMarks = async () => {
     if (!selectedClass) return;
     
-    setIsLoading(true);
+    if (students.length === 0) {
+      setIsLoading(true);
+    }
     const [grade, section] = selectedClass.split('-');
     
     try {

@@ -52,7 +52,9 @@ export default function TeacherDashboard() {
 
       const fetchDashboardData = async () => {
         if (!initialEmail) return;
-        setIsLoading(true);
+        if (dashboardData.todaysClasses.length === 0) {
+          setIsLoading(true);
+        }
         try {
           const timestamp = new Date().getTime();
           const response = await fetch(`http://172.20.10.7:5000/api/teacher/${initialEmail}/dashboard?t=${timestamp}`);
@@ -89,7 +91,7 @@ export default function TeacherDashboard() {
     }, [initialEmail])
   );
 
-  const firstName = dashboardData.teacher.full_name ? dashboardData.teacher.full_name.split(" ")[0] : "Teacher";
+  const displayName = dashboardData.teacher.full_name || "Teacher";
 
   const getNavParams = () => ({
     full_name: dashboardData.teacher.full_name,
@@ -139,7 +141,7 @@ export default function TeacherDashboard() {
                 )}
               </TouchableOpacity>
               <View>
-                <Text style={styles.greeting}>Hello, {firstName}</Text>
+                <Text style={styles.greeting}>Hello, {displayName}</Text>
                 <Text style={styles.subtext}>ID: {dashboardData.teacher.staff_id}</Text>
               </View>
             </View>

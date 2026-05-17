@@ -8,6 +8,28 @@ const getOrdinal = (n) => {
   return (s[(v - 20) % 10] || s[v] || s[0]);
 };
 
+const matchesSubject = (sub1, sub2) => {
+  if (!sub1 || !sub2) return false;
+  const s1 = sub1.toLowerCase().trim();
+  const s2 = sub2.toLowerCase().trim();
+  if (s1 === s2) return true;
+  
+  // Subject alias mapping
+  const aliases = {
+    'ict': ['information technology', 'ict', 'git'],
+    'information technology': ['ict', 'git', 'information technology'],
+    'git': ['ict', 'information technology', 'git'],
+    'general english': ['english', 'general english'],
+    'english': ['general english', 'english'],
+    'combined mathematics': ['mathematics', 'combined mathematics', 'combined maths'],
+    'physics': ['physics']
+  };
+  
+  if (aliases[s1] && aliases[s1].includes(s2)) return true;
+  if (aliases[s2] && aliases[s2].includes(s1)) return true;
+  return false;
+};
+
 
 exports.getProfile = async (req, res) => {
   try {
@@ -136,11 +158,17 @@ exports.getDashboard = async (req, res) => {
 
     // 2. Fetch children details with academic summaries
     let children = [];
+    let parentSchoolId = parent.school_id;
+
     if (parent.child_student_ids && parent.child_student_ids.length > 0) {
       const childrenRes = await db.query(
         'SELECT id, first_name, last_name, index_number, grade_level, section, school_id FROM students WHERE index_number = ANY($1)',
         [parent.child_student_ids]
       );
+
+      if (childrenRes.rows.length > 0 && !parentSchoolId) {
+        parentSchoolId = childrenRes.rows[0].school_id;
+      }
       
       for (let child of childrenRes.rows) {
         // Fetch academic summary for each child
@@ -217,7 +245,7 @@ exports.getDashboard = async (req, res) => {
          AND (audience = 'Parents' OR audience = 'Parents and Students' OR audience = 'Teaching Staff, Parents and Students' OR audience = 'All' OR audience = 'All students, parents and teachers')
          ORDER BY created_at DESC 
          LIMIT 1`,
-        [parent.school_id]
+        [parentSchoolId]
       );
 
       if (urgentNoticeRes.rows.length > 0) {
@@ -247,7 +275,7 @@ exports.getDashboard = async (req, res) => {
          AND event_date >= (CURRENT_DATE - INTERVAL '14 days')
          ORDER BY event_date DESC 
          LIMIT 5`,
-        [parent.school_id]
+        [parentSchoolId]
       );
 
       specialEvents = newsRes.rows.map(ev => {
@@ -287,7 +315,7 @@ exports.getAcademicProfile = async (req, res) => {
 
     // 1. Fetch Student Details
     const studentRes = await db.query(
-      'SELECT id, first_name, last_name, index_number, grade_level, section, profile_photo_url, school_id FROM students WHERE index_number = $1',
+      'SELECT id, first_name, last_name, index_number, grade_level, section, profile_photo_url, school_id, subjects FROM students WHERE index_number = $1',
       [studentId]
     );
     if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
@@ -319,6 +347,13 @@ exports.getAcademicProfile = async (req, res) => {
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       });
 
+    // Get class teacher ID for this class
+    const classRes = await db.query(
+      'SELECT class_teacher_id FROM classes WHERE grade = $1 AND section = $2 AND school_id = $3',
+      [student.grade_level, student.section, schoolId]
+    );
+    const classTeacherId = classRes.rows.length > 0 ? classRes.rows[0].class_teacher_id : null;
+
     // 3. Teachers & Contacts
     const teachersRes = await db.query(
       `SELECT DISTINCT t.full_name as name, t.email, t.phone_number as phone, t.subject as role, t.is_class_teacher, t.id
@@ -330,6 +365,17 @@ exports.getAcademicProfile = async (req, res) => {
        ))`,
        [student.grade_level, student.section, schoolId]
     );
+
+    // Filter teachers so that we only keep the designated Class Teacher and subject teachers teaching the child's subjects
+    const studentSubjects = student.subjects || [];
+    const filteredTeachers = teachersRes.rows.filter(teacher => {
+      // 1. Keep the class teacher of this class
+      if (classTeacherId && teacher.id === classTeacherId) {
+        return true;
+      }
+      // 2. Keep subject teachers whose subject matches one of the student's subjects
+      return studentSubjects.some(subName => matchesSubject(subName, teacher.role));
+    });
 
     // 4. Timetable
     const timetableRes = await db.query(
@@ -419,7 +465,7 @@ exports.getAcademicProfile = async (req, res) => {
         subjects: subjectsWithAvg,
         behavior: gradesRes.rows.length > 0 ? gradesRes.rows[0].remarks : "Excellent conduct. Very active in class discussions."
       },
-      teachers: teachersRes.rows,
+      teachers: filteredTeachers,
       timetable
     });
   } catch (error) {
@@ -443,18 +489,18 @@ exports.getContacts = async (req, res) => {
     // 2. Get teachers assigned to those students' classes (Subject teachers & Class teachers)
     const result = await db.query(
       `SELECT DISTINCT id, name, email, role, type FROM (
-         -- Subject teachers from timetable
+         -- Subject teachers from timetable matching enrolled subjects
          SELECT t.id, t.full_name as name, t.email, t.subject as role, 'teacher' as type
          FROM teachers t
          INNER JOIN class_timetables ct ON t.id = ct.teacher_id
          INNER JOIN classes c ON ct.class_id = c.id
          INNER JOIN students s ON s.grade_level = c.grade AND s.section = c.section AND s.school_id = c.school_id
-         WHERE s.index_number = ANY($1)
+         WHERE s.index_number = ANY($1) AND (s.subjects ? ct.subject)
          
          UNION
          
          -- Class teachers
-         SELECT t.id, t.full_name as name, t.email, t.subject as role, 'teacher' as type
+         SELECT t.id, t.full_name as name, t.email, 'Class Teacher' as role, 'teacher' as type
          FROM teachers t
          INNER JOIN classes c ON t.id = c.class_teacher_id
          INNER JOIN students s ON s.grade_level = c.grade AND s.section = c.section AND s.school_id = c.school_id

@@ -50,7 +50,9 @@ export default function IndustryProfileScreen() {
 
   const fetchProfileData = async () => {
     if (!initialEmail) return;
-    setIsLoading(true);
+    if (!profileData.phone) {
+      setIsLoading(true);
+    }
     try {
       const timestamp = new Date().getTime();
       const response = await fetch(`http://172.20.10.7:5000/api/industry/${initialEmail}/dashboard?t=${timestamp}`);

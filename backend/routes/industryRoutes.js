@@ -14,6 +14,11 @@ router.get('/schools', industryController.getSchools);
 router.post('/:email/announcements', industryController.postAnnouncement);
 router.get('/:email/announcements', industryController.getAnnouncements);
 router.get('/:email/jobs', industryController.getJobs);
+router.put('/jobs/:jobId', industryController.updateJob);
+router.delete('/jobs/:jobId', industryController.deleteJob);
 router.get('/jobs/:jobId/applicants', industryController.getJobApplicants);
+
+router.put('/announcements/:annId', industryController.updateAnnouncement);
+router.delete('/announcements/:annId', industryController.deleteAnnouncement);
 
 module.exports = router;

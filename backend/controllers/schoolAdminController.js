@@ -31,6 +31,56 @@ exports.getSchoolDashboardStats = async (req, res) => {
       const pendingJobsCount = await db.query("SELECT COUNT(*) FROM internships WHERE status = 'Pending'");
       const totalPendingJobs = parseInt(pendingJobsCount.rows[0].count, 10);
 
+      // 1. Dynamic Student Attendance calculations for today
+      const todayAttendance = await db.query(
+        `SELECT status, COUNT(*) as count 
+         FROM student_attendance 
+         WHERE school_id = $1 AND TO_CHAR(date, 'YYYY-MM-DD') = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')
+         GROUP BY status`,
+        [schoolId]
+      );
+      
+      let presentToday = 0;
+      let absentToday = 0;
+      todayAttendance.rows.forEach(row => {
+        if (row.status === 'Present') presentToday = parseInt(row.count, 10);
+        if (row.status === 'Absent') absentToday = parseInt(row.count, 10);
+      });
+      
+      const totalToday = presentToday + absentToday;
+      const attendancePercentage = totalToday > 0 ? Math.round((presentToday / totalToday) * 100) : 0;
+
+      // 2. Dynamic Events today calculations
+      const todayEvents = await db.query(
+        `SELECT COUNT(*), MIN(title) as next_event 
+         FROM events 
+         WHERE school_id = $1 AND TO_CHAR(event_date, 'YYYY-MM-DD') = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')`,
+        [schoolId]
+      );
+      
+      const eventsTodayCount = parseInt(todayEvents.rows[0].count, 10);
+      const nextEventTitle = todayEvents.rows[0].next_event || "No events scheduled";
+
+      // 3. Get Recent 5 Notices
+      const noticesRes = await db.query(
+        `SELECT id, title, content, priority, audience, posted_by, created_at 
+         FROM notices 
+         WHERE school_id = $1 
+         ORDER BY created_at DESC 
+         LIMIT 5`,
+        [schoolId]
+      );
+
+      // 4. Get Upcoming 5 Events
+      const eventsRes = await db.query(
+        `SELECT id, title, event_date, time_from, time_to, location, type, audience 
+         FROM events 
+         WHERE school_id = $1 AND event_date >= CURRENT_DATE 
+         ORDER BY event_date ASC, time_from ASC 
+         LIMIT 5`,
+        [schoolId]
+      );
+
       res.json({
         overallStats: { 
           students: totalStudents, 
@@ -40,14 +90,15 @@ exports.getSchoolDashboardStats = async (req, res) => {
           classes: totalClasses 
         },
         dailyStats: { 
-          studentAttendance: { present: 0, total: totalStudents, percentage: 0 }, 
+          studentAttendance: { present: presentToday, total: totalStudents, percentage: attendancePercentage }, 
           teacherAttendance: { present: 0, total: totalTeachers, percentage: 0 }, 
           staffLeave: { approved: 0, pending: 0 }, 
-          eventsToday: { count: 0, nextEvent: "No events scheduled" },
+          eventsToday: { count: eventsTodayCount, nextEvent: nextEventTitle },
           pendingInternships: totalPendingJobs
         },
         industryPartners: totalIndustry,
-        notices: [], events: []   
+        notices: noticesRes.rows, 
+        events: eventsRes.rows   
       });
     } catch (e) { 
       console.error("Query error", e); 
@@ -224,7 +275,7 @@ exports.getTeacherTimetable = async (req, res) => {
     const result = await db.query(
       `SELECT ct.day_of_week, ct.period_number, ct.time_slot, ct.subject, c.grade, c.section, c.room_number 
        FROM class_timetables ct JOIN classes c ON ct.class_id = c.id 
-       WHERE ct.teacher_id = $1`, [teacherId]
+       WHERE ct.teacher_id = $1 AND ct.subject = (SELECT subject FROM teachers WHERE id = $1)`, [teacherId]
     );
     res.json(result.rows);
   } catch (error) { res.status(500).json({ error: "Failed to fetch teacher timetable." }); }
@@ -633,27 +684,37 @@ exports.getAcademicTrends = async (req, res) => {
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     const schoolId = schoolResult.rows[0].id;
 
-    // Fetch average marks grouped by assessment type and level
-    // We pivot the levels (OL, AL) into columns for Recharts
+    // Fetch average marks grouped by assessment type and student grade level
     const result = await db.query(
       `SELECT 
-        assessment_type as term,
-        ROUND(AVG(CASE WHEN level = 'OL' THEN marks END), 2) as "OL",
-        ROUND(AVG(CASE WHEN level = 'AL' THEN marks END), 2) as "AL"
-       FROM student_grades 
-       WHERE school_id = $1 
-       GROUP BY assessment_type 
+        sg.assessment_type as term,
+        s.grade_level as grade,
+        ROUND(AVG(sg.marks), 2) as average_marks
+       FROM student_grades sg
+       JOIN students s ON (sg.student_id = s.index_number OR sg.student_id = s.id::text)
+       WHERE sg.school_id = $1 AND s.grade_level IS NOT NULL AND s.grade_level <> ''
+       GROUP BY sg.assessment_type, s.grade_level
        ORDER BY 
          CASE 
-           WHEN assessment_type ILIKE '%Term 1%' THEN 1
-           WHEN assessment_type ILIKE '%Term 2%' THEN 2
-           WHEN assessment_type ILIKE '%Term 3%' THEN 3
+           WHEN sg.assessment_type ILIKE '%Term 1%' THEN 1
+           WHEN sg.assessment_type ILIKE '%Term 2%' THEN 2
+           WHEN sg.assessment_type ILIKE '%Term 3%' THEN 3
            ELSE 4
          END`,
       [schoolId]
     );
 
-    res.json(result.rows);
+    // Dynamically pivot the grades in JavaScript
+    const termMap = {};
+    result.rows.forEach(row => {
+      const { term, grade, average_marks } = row;
+      if (!termMap[term]) {
+        termMap[term] = { term };
+      }
+      termMap[term][grade] = parseFloat(average_marks);
+    });
+
+    res.json(Object.values(termMap));
   } catch (error) {
     console.error("Get Academic Trends Error:", error.message);
     res.status(500).json({ error: "Failed to fetch academic trends." });
@@ -670,36 +731,44 @@ exports.getAttendanceHealth = async (req, res) => {
     if (schoolResult.rows.length === 0) return res.status(404).json({ error: "School not found" });
     const schoolId = schoolResult.rows[0].id;
 
-    // Calculate attendance percentage grouped by grade level
+    // Calculate attendance percentage grouped by grade level, including ALL grades in classes/students
     const result = await db.query(
-      `SELECT 
-        s.grade_level as grade,
-        ROUND((COUNT(CASE WHEN sa.status = 'Present' THEN 1 END) * 100.0) / NULLIF(COUNT(sa.id), 0), 2) as attendance
-       FROM students s
-       JOIN student_attendance sa ON s.id = sa.student_id
-       WHERE s.school_id = $1
-       GROUP BY s.grade_level
-       ORDER BY 
-         CASE 
-           WHEN s.grade_level ILIKE 'Grade 1' THEN 1
-           WHEN s.grade_level ILIKE 'Grade 2' THEN 2
-           WHEN s.grade_level ILIKE 'Grade 3' THEN 3
-           WHEN s.grade_level ILIKE 'Grade 4' THEN 4
-           WHEN s.grade_level ILIKE 'Grade 5' THEN 5
-           WHEN s.grade_level ILIKE 'Grade 6' THEN 6
-           WHEN s.grade_level ILIKE 'Grade 7' THEN 7
-           WHEN s.grade_level ILIKE 'Grade 8' THEN 8
-           WHEN s.grade_level ILIKE 'Grade 9' THEN 9
-           WHEN s.grade_level ILIKE 'Grade 10' THEN 10
-           WHEN s.grade_level ILIKE 'Grade 11' THEN 11
-           WHEN s.grade_level ILIKE 'Grade 12' THEN 12
-           WHEN s.grade_level ILIKE 'Grade 13' THEN 13
-           ELSE 14
-         END`,
+      `WITH school_grades AS (
+        SELECT DISTINCT grade FROM classes WHERE school_id = $1
+        UNION
+        SELECT DISTINCT grade_level as grade FROM students WHERE school_id = $1 AND grade_level IS NOT NULL AND grade_level <> ''
+      )
+      SELECT 
+        sg.grade,
+        COALESCE(ROUND((COUNT(CASE WHEN sa.status = 'Present' THEN 1 END) * 100.0) / NULLIF(COUNT(sa.id), 0), 2), 0.00) as attendance
+      FROM school_grades sg
+      LEFT JOIN students s ON s.grade_level = sg.grade AND s.school_id = $1
+      LEFT JOIN student_attendance sa ON s.id = sa.student_id
+      GROUP BY sg.grade
+      ORDER BY 
+        CASE 
+          WHEN sg.grade ILIKE 'Grade 1' THEN 1
+          WHEN sg.grade ILIKE 'Grade 2' THEN 2
+          WHEN sg.grade ILIKE 'Grade 3' THEN 3
+          WHEN sg.grade ILIKE 'Grade 4' THEN 4
+          WHEN sg.grade ILIKE 'Grade 5' THEN 5
+          WHEN sg.grade ILIKE 'Grade 6' THEN 6
+          WHEN sg.grade ILIKE 'Grade 7' THEN 7
+          WHEN sg.grade ILIKE 'Grade 8' THEN 8
+          WHEN sg.grade ILIKE 'Grade 9' THEN 9
+          WHEN sg.grade ILIKE 'Grade 10' THEN 10
+          WHEN sg.grade ILIKE 'Grade 11' THEN 11
+          WHEN sg.grade ILIKE 'Grade 12' THEN 12
+          WHEN sg.grade ILIKE 'Grade 13' THEN 13
+          ELSE 14
+        END`,
       [schoolId]
     );
 
-    res.json(result.rows);
+    res.json(result.rows.map(row => ({
+      grade: row.grade,
+      attendance: parseFloat(row.attendance)
+    })));
   } catch (error) {
     console.error("Get Attendance Health Error:", error.message);
     res.status(500).json({ error: "Failed to fetch attendance health data." });
@@ -865,8 +934,16 @@ exports.getSchoolProfileByUser = async (req, res) => {
     }
 
     if (!schoolId) {
-      result = await db.query('SELECT school_id FROM parents WHERE email = $1', [cleanEmail]);
-      if (result.rows.length > 0) schoolId = result.rows[0].school_id;
+      result = await db.query('SELECT school_id, child_student_ids FROM parents WHERE email = $1', [cleanEmail]);
+      if (result.rows.length > 0) {
+        schoolId = result.rows[0].school_id;
+        if (!schoolId && result.rows[0].child_student_ids && result.rows[0].child_student_ids.length > 0) {
+          const childRes = await db.query('SELECT school_id FROM students WHERE index_number = ANY($1) AND school_id IS NOT NULL LIMIT 1', [result.rows[0].child_student_ids]);
+          if (childRes.rows.length > 0) {
+            schoolId = childRes.rows[0].school_id;
+          }
+        }
+      }
     }
 
     if (!schoolId) return res.status(404).json({ error: "User or associated school not found." });

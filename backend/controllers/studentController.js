@@ -6,6 +6,24 @@ const getOrdinal = (n) => {
   return (s[(v - 20) % 10] || s[v] || s[0]);
 };
 
+const matchesSubject = (subA, subB) => {
+  if (!subA || !subB) return false;
+  const a = subA.toLowerCase().trim();
+  const b = subB.toLowerCase().trim();
+  if (a === b) return true;
+  const aliases = [
+    ['ict', 'information technology'],
+    ['general english', 'english'],
+    ['combined mathematics', 'mathematics'],
+    ['combined maths', 'mathematics'],
+    ['git', 'information technology']
+  ];
+  for (const pair of aliases) {
+    if (pair.includes(a) && pair.includes(b)) return true;
+  }
+  return a.includes(b) || b.includes(a);
+};
+
 
 exports.getJobs = async (req, res) => {
   try {
@@ -38,11 +56,11 @@ exports.applyJob = async (req, res) => {
 exports.getDashboard = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const studentRes = await db.query('SELECT school_id, grade_level, subjects FROM students WHERE index_number = $1', [studentId]);
+    const studentRes = await db.query('SELECT school_id, grade_level, section, subjects FROM students WHERE index_number = $1', [studentId]);
     if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
 
     const student = studentRes.rows[0];
-    const { school_id: schoolId, grade_level: gradeLevel, subjects: enrolledSubjectsData } = student;
+    const { school_id: schoolId, grade_level: gradeLevel, section, subjects: enrolledSubjectsData } = student;
 
     // Check grade for industry visibility
     const gradeMatch = gradeLevel.match(/\d+/);
@@ -59,7 +77,20 @@ exports.getDashboard = async (req, res) => {
       console.error("Error parsing student subjects:", e);
     }
 
-    // Fetch all subject details for the student's grade
+    // 1. Get all timetable slots for this student's classroom
+    const timetablesRes = await db.query(
+      `SELECT DISTINCT ct.subject, t.full_name 
+       FROM class_timetables ct 
+       JOIN teachers t ON ct.teacher_id = t.id 
+       JOIN classes c ON ct.class_id = c.id 
+       WHERE c.grade = $1 AND c.section = $2`,
+      [gradeLevel, section]
+    );
+
+    // 2. Get all teachers for global subject-based mapping fallback
+    const teachersRes = await db.query('SELECT full_name, subject FROM teachers');
+
+    // 3. Get all subject details for the student's grade (for styles/icons)
     const subjectsRes = await db.query('SELECT * FROM subjects WHERE grade_level = $1', [gradeLevel]);
     const subjectDetailsMap = {};
     subjectsRes.rows.forEach(sub => {
@@ -69,11 +100,27 @@ exports.getDashboard = async (req, res) => {
     // Create ongoing subjects list based on student's enrollment
     const ongoingSubjects = enrolledSubjects.map((subjectName, index) => {
       const detail = subjectDetailsMap[subjectName];
+      
+      // Resolve teacher name
+      let teacherName = "Subject Teacher";
+      const timetableMatch = timetablesRes.rows.find(row => matchesSubject(row.subject, subjectName));
+      if (timetableMatch) {
+        teacherName = timetableMatch.full_name;
+      } else {
+        if (detail && detail.teacher_name) {
+          teacherName = detail.teacher_name;
+        } else {
+          const teacherMatch = teachersRes.rows.find(t => matchesSubject(t.subject, subjectName));
+          if (teacherMatch) {
+            teacherName = teacherMatch.full_name;
+          }
+        }
+      }
 
       return {
         id: detail ? detail.id.toString() : `enrolled-${index}`,
         name: subjectName,
-        teacher: detail ? detail.teacher_name : "Subject Teacher",
+        teacher: teacherName,
         icon: detail ? detail.icon_name : "book",
         color: detail ? detail.theme_color : "#4F46E5",
         bg: detail ? detail.bg_color : "#F5F3FF"
@@ -289,7 +336,7 @@ exports.getAttendanceHistory = async (req, res) => {
 
     // Fetch attendance records for the last 30 days
     const result = await db.query(
-      `SELECT date, status 
+      `SELECT TO_CHAR(date, 'YYYY-MM-DD') as date, status 
        FROM student_attendance 
        WHERE student_id = $1 
        AND date >= CURRENT_DATE - INTERVAL '30 days'
@@ -355,7 +402,7 @@ exports.getAcademicReport = async (req, res) => {
 
     // 4. Map enrolled subjects to grades
     for (let subjName of enrolledSubjects) {
-      const gradeRecord = gradesRes.rows.find(g => g.name === subjName);
+      const gradeRecord = gradesRes.rows.find(g => matchesSubject(g.name, subjName));
       
       let marksVal = "-";
       let grade = "-";
@@ -370,8 +417,17 @@ exports.getAcademicReport = async (req, res) => {
         subjectsWithMarksCount++;
       }
 
+      // Calculate class average supporting cross-aliases seamlessly
       const avgRes = await db.query(
-        'SELECT ROUND(AVG(marks), 1) as average FROM student_grades WHERE subject_name = $1 AND assessment_type = $2 AND school_id = $3',
+        `SELECT ROUND(AVG(marks), 1) as average 
+         FROM student_grades 
+         WHERE assessment_type = $2 AND school_id = $3 
+         AND (
+           LOWER(subject_name) = LOWER($1) OR
+           (LOWER($1) IN ('ict', 'git', 'information technology') AND LOWER(subject_name) IN ('ict', 'git', 'information technology')) OR
+           (LOWER($1) IN ('english', 'general english') AND LOWER(subject_name) IN ('english', 'general english')) OR
+           (LOWER($1) IN ('mathematics', 'combined mathematics', 'combined maths', 'maths') AND LOWER(subject_name) IN ('mathematics', 'combined mathematics', 'combined maths', 'maths'))
+         )`,
         [subjName, term, schoolId]
       );
 
@@ -390,10 +446,21 @@ exports.getAcademicReport = async (req, res) => {
         const marksVal = parseFloat(g.marks) || 0;
         totalMarks += marksVal;
         subjectsWithMarksCount++;
+        
+        // Calculate class average supporting cross-aliases seamlessly
         const avgRes = await db.query(
-          'SELECT ROUND(AVG(marks), 1) as average FROM student_grades WHERE subject_name = $1 AND assessment_type = $2 AND school_id = $3',
+          `SELECT ROUND(AVG(marks), 1) as average 
+           FROM student_grades 
+           WHERE assessment_type = $2 AND school_id = $3 
+           AND (
+             LOWER(subject_name) = LOWER($1) OR
+             (LOWER($1) IN ('ict', 'git', 'information technology') AND LOWER(subject_name) IN ('ict', 'git', 'information technology')) OR
+             (LOWER($1) IN ('english', 'general english') AND LOWER(subject_name) IN ('english', 'general english')) OR
+             (LOWER($1) IN ('mathematics', 'combined mathematics', 'combined maths', 'maths') AND LOWER(subject_name) IN ('mathematics', 'combined mathematics', 'combined maths', 'maths'))
+           )`,
           [g.name, term, schoolId]
         );
+        
         finalSubjects.push({
           subject: g.name,
           marks: marksVal,
@@ -507,7 +574,7 @@ exports.getMaterials = async (req, res) => {
 
     const relevantMaterials = materialsRes.rows.filter(mat =>
       mat.subject === 'General' ||
-      (studentSubjects && studentSubjects.includes(mat.subject)) ||
+      (studentSubjects && studentSubjects.some(subName => matchesSubject(subName, mat.subject))) ||
       !studentSubjects || studentSubjects.length === 0
     );
 
@@ -528,14 +595,23 @@ exports.getContacts = async (req, res) => {
     if (studentRes.rows.length === 0) return res.status(404).json({ error: "Student not found" });
     const { grade_level, section } = studentRes.rows[0];
 
-    // 2. Get teachers assigned to this student's class
+    // 2. Get teachers matching child's enrolled subjects + class teacher
     const result = await db.query(
       `SELECT DISTINCT t.full_name as name, t.email, t.subject as role, 'teacher' as type
        FROM teachers t
        INNER JOIN class_timetables ct ON t.id = ct.teacher_id
        INNER JOIN classes c ON ct.class_id = c.id
-       WHERE c.grade = $1 AND c.section = $2`,
-      [grade_level, section]
+       INNER JOIN students s ON s.grade_level = c.grade AND s.section = c.section AND s.school_id = c.school_id
+       WHERE s.email = $1 AND (s.subjects ? ct.subject)
+
+       UNION
+
+       SELECT DISTINCT t.full_name as name, t.email, t.subject as role, 'teacher' as type
+       FROM teachers t
+       INNER JOIN classes c ON t.id = c.class_teacher_id
+       INNER JOIN students s ON s.grade_level = c.grade AND s.section = c.section AND s.school_id = c.school_id
+       WHERE s.email = $1`,
+      [cleanEmail]
     );
 
     res.json(result.rows);

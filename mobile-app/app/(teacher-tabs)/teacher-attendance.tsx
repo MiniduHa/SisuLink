@@ -42,7 +42,9 @@ export default function TeacherAttendanceScreen() {
 
       const fetchStudents = async () => {
         if (!email) return;
-        setIsLoading(true);
+        if (students.length === 0) {
+          setIsLoading(true);
+        }
         try {
           const timestamp = new Date().getTime();
           const response = await fetch(`http://172.20.10.7:5000/api/teacher/${email}/class-students?t=${timestamp}`);

@@ -35,7 +35,9 @@ export default function ChildReportScreen() {
       return;
     }
     
-    setIsLoading(true);
+    if (reportData === null) {
+      setIsLoading(true);
+    }
     try {
       const url = activeTerm 
         ? `http://172.20.10.7:5000/api/student/${studentId}/academic-report?term=${activeTerm}`

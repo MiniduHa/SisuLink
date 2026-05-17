@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome6, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import WatermarkOverlay from "../../components/WatermarkOverlay";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -34,7 +35,17 @@ export default function StudentProfileScreen() {
   const email = (params.email as string) || "student@school.lk";
   const gradeLevel = (params.grade as string) || "11";
   const attendance = (params.attendance as string) || "85%";
-  const studentId = (params.studentId as string) || "STU-90214";
+  const [studentId, setStudentId] = useState((params.studentId as string) || "");
+
+  useEffect(() => {
+    const loadSession = async () => {
+      const storedId = await AsyncStorage.getItem("studentId");
+      if (storedId) {
+        setStudentId(storedId);
+      }
+    };
+    loadSession();
+  }, []);
 
   const avatarInitials = (firstName[0] + (lastName[0] || "")).toUpperCase();
 
@@ -45,7 +56,7 @@ export default function StudentProfileScreen() {
   const tabs = isSecondary ? ["About", "Resume"] : ["About"];
   const [activeTab, setActiveTab] = useState("About");
   const [isEditing, setIsEditing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   
   // --- PROFILE DATA STATES ---
   const [mobile, setMobile] = useState("");
@@ -81,7 +92,9 @@ export default function StudentProfileScreen() {
   // --- FETCH DATA ON MOUNT ---
   const fetchProfile = useCallback(async () => {
     if (!studentId) return;
-    setIsLoading(true);
+    if (!mobile) {
+      setIsLoading(true);
+    }
     try {
       const response = await fetch(`http://172.20.10.7:5000/api/profile/${studentId}`);
       if (response.ok) {
@@ -166,7 +179,7 @@ export default function StudentProfileScreen() {
       if (profilePhoto && !profilePhoto.startsWith('http')) {
         const formData = new FormData();
         formData.append('photo', {
-          uri: Platform.OS === 'android' ? profilePhoto : profilePhoto.replace('file://', ''),
+          uri: profilePhoto,
           name: `${studentId}_avatar.jpg`,
           type: 'image/jpeg',
         } as any);
@@ -203,7 +216,7 @@ export default function StudentProfileScreen() {
 
         const formData = new FormData();
         formData.append('resume', {
-          uri: Platform.OS === 'android' ? file.uri : file.uri.replace('file://', ''),
+          uri: file.uri,
           name: file.name,
           type: file.mimeType || 'application/pdf',
         } as any);
@@ -513,30 +526,6 @@ export default function StudentProfileScreen() {
           {activeTab === "Resume" && isSecondary && (
             <View style={styles.tabContent}>
               
-              {/* Industry Selector */}
-              <View style={{ marginBottom: 16 }}>
-                <Text style={styles.sectionDividerTitle}>Select Industry</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {industryOptions.map((ind) => (
-                    <TouchableOpacity
-                      key={ind}
-                      style={[
-                        styles.resumeIndustryChip, 
-                        selectedResumeIndustry === ind && styles.resumeIndustryChipActive
-                      ]}
-                      onPress={() => setSelectedResumeIndustry(ind)}
-                    >
-                      <Text style={[
-                        styles.resumeIndustryText, 
-                        selectedResumeIndustry === ind && styles.resumeIndustryTextActive
-                      ]}>
-                        {ind}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>{selectedResumeIndustry === 'All' ? 'General Resume' : `${selectedResumeIndustry} Resume`}</Text>
                 <Text style={styles.cardSubtitle}>

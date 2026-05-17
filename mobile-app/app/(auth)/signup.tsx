@@ -132,6 +132,7 @@ export default function SignupScreen() {
 
   const [studentId, setStudentId] = useState("");
   const [grade, setGrade] = useState("");
+  const [stream, setStream] = useState("");
   
   // Teacher Specific States
   const [staffId, setStaffId] = useState("");
@@ -151,6 +152,7 @@ export default function SignupScreen() {
   const [availableGrades, setAvailableGrades] = useState<string[]>([]);
   const [availableRooms, setAvailableRooms] = useState<{room_number: string, section: string}[]>([]);
   const [room, setRoom] = useState("");
+  const [roomSection, setRoomSection] = useState("");
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [olSelections, setOlSelections] = useState({ religion: '', b1: '', b2: '', b3: '' });
 
@@ -190,6 +192,7 @@ export default function SignupScreen() {
       setGrade("");
       setAvailableRooms([]);
       setRoom("");
+      setRoomSection("");
     }
   }, [school]);
 
@@ -211,6 +214,7 @@ export default function SignupScreen() {
     } else {
       setAvailableRooms([]);
       setRoom("");
+      setRoomSection("");
     }
   }, [school, grade]);
 
@@ -275,13 +279,21 @@ export default function SignupScreen() {
       };
       
       if (role === "Student") {
+        const isALGrade = grade.includes("12") || grade.includes("13") || grade.includes("A/L");
+        if (isALGrade && !stream) {
+          Alert.alert("Incomplete", "Please select your A/L Academic Stream.");
+          setIsLoading(false);
+          return;
+        }
+
         payload.first_name = firstName;
         payload.last_name = lastName;
         payload.grade_level = grade;
-        payload.section = room || department; 
+        payload.section = roomSection || department; 
         payload.index_number = studentId;
         payload.school_name = school; 
         payload.medium = medium || "English";
+        payload.stream = stream;
 
         // Compile Final Subjects Array
         let finalSubjects = [...selectedSubjects];
@@ -402,12 +414,14 @@ export default function SignupScreen() {
               onSelect={(val: string) => {
                 setGrade(val);
                 setRoom("");
+                setRoomSection("");
                 setDepartment("");
+                setStream("");
                 setSelectedSubjects([]);
               }} 
             />
 
-            {availableRooms.length > 0 ? (
+            {availableRooms.length > 0 && (
               <CustomDropdown 
                 label="Class Room" 
                 value={room} 
@@ -416,20 +430,44 @@ export default function SignupScreen() {
                   setRoom(val);
                   const selectedRoomObj = availableRooms.find(r => r.room_number === val);
                   if (selectedRoomObj) {
-                    setDepartment(selectedRoomObj.section);
-                    setSelectedSubjects([]);
+                    setRoomSection(selectedRoomObj.section);
+                    // Pre-map standard sections based on grade for Grade 1-11
+                    if (grade.match(/Grade [1-5]$/)) {
+                      setDepartment("Primary Section");
+                    } else if (grade.match(/Grade [6-9]$/)) {
+                      setDepartment("Junior Secondary Section");
+                    } else if (grade.match(/Grade 10|11/)) {
+                      setDepartment("Senior Secondary (O/L)");
+                    } else {
+                      // For A/L, stream dropdown will set the department
+                      if (!(grade.includes("12") || grade.includes("13") || grade.includes("A/L"))) {
+                        setDepartment(selectedRoomObj.section);
+                      }
+                    }
                   }
                 }} 
               />
-            ) : grade ? (
+            )}
+
+            {grade && (grade.includes("12") || grade.includes("13") || grade.includes("A/L")) ? (
+              <CustomDropdown 
+                label="A/L Stream" 
+                value={stream} 
+                options={["Physical Science", "Biological Science", "Commerce", "Technology", "Arts"]} 
+                onSelect={(val: string) => {
+                  setStream(val);
+                  setDepartment(`A/L - ${val}`);
+                  setSelectedSubjects([]);
+                }} 
+              />
+            ) : grade && availableRooms.length === 0 ? (
               <CustomDropdown 
                 label="Select Stream / Section" 
                 value={department} 
                 options={
                   grade.match(/Grade [1-5]$/) ? ["Primary Section"] :
                   grade.match(/Grade [6-9]$/) ? ["Junior Secondary Section"] :
-                  grade.match(/Grade 10|11/) ? ["Senior Secondary (O/L)"] :
-                  ["A/L - Physical Science", "A/L - Biological Science", "A/L - Commerce", "A/L - Technology", "A/L - Arts"]
+                  ["Senior Secondary (O/L)"]
                 } 
                 onSelect={(val: string) => {
                   setDepartment(val);

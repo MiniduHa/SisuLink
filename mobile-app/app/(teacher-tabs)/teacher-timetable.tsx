@@ -34,7 +34,9 @@ export default function TeacherTimetable() {
   useEffect(() => {
     const fetchTimetable = async () => {
       if (!initialEmail) return;
-      setIsLoading(true);
+      if (timetableData.length === 0) {
+        setIsLoading(true);
+      }
       try {
         const timestamp = new Date().getTime();
         // Adjust this IP to your machine's IP!

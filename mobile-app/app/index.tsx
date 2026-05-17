@@ -13,17 +13,20 @@ export default function LoadingScreen() {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval);
-          setTimeout(() => {
-            router.replace("/selection"); 
-          }, 300);
           return 100;
         }
-        return prev + 1;
+        return prev + 10;
       });
-    }, 30);
+    }, 15);
 
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (progress >= 100) {
+      router.replace("/selection");
+    }
+  }, [progress, router]);
 
   return (
     <View style={styles.container}>

@@ -47,7 +47,9 @@ export default function SchoolCalendarScreen() {
       let isActive = true;
       const fetchEvents = async () => {
         if (!teacherEmail) return;
-        setIsLoading(true);
+        if (events.length === 0) {
+          setIsLoading(true);
+        }
         try {
           const timestamp = new Date().getTime();
           const response = await fetch(`http://172.20.10.7:5000/api/teacher/${teacherEmail}/events?t=${timestamp}`);

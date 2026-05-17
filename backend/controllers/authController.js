@@ -105,7 +105,7 @@ exports.register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     if (role === 'Student') {
-      const { first_name, last_name, grade_level, section, index_number, school_name, subjects } = req.body;
+      const { first_name, last_name, grade_level, section, index_number, school_name, subjects, stream } = req.body;
 
       let school_id = null;
       if (school_name) {
@@ -118,8 +118,8 @@ exports.register = async (req, res) => {
       }
 
       const result = await db.query(
-        `INSERT INTO students (first_name, last_name, email, password, grade_level, section, index_number, school_name, school_id, subjects) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, first_name, last_name, email`,
-        [first_name, last_name, email, hashedPassword, grade_level, section, index_number, school_name.trim(), school_id, subjects || []]
+        `INSERT INTO students (first_name, last_name, email, password, grade_level, section, index_number, school_name, school_id, subjects, stream) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, first_name, last_name, email`,
+        [first_name, last_name, email, hashedPassword, grade_level, section, index_number, school_name.trim(), school_id, JSON.stringify(subjects || []), stream || null]
       );
       return res.status(201).json({ message: "Student registered successfully!", user: result.rows[0] });
 

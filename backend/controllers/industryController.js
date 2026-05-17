@@ -97,8 +97,8 @@ exports.postJob = async (req, res) => {
     }
 
     const result = await db.query(
-      `INSERT INTO internships (industry_id, company_name, title, description, requirements, location, employment_type, cover_photo) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      `INSERT INTO internships (industry_id, company_name, title, description, requirements, location, employment_type, cover_photo, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending') RETURNING *`,
       [partner.rows[0].id, partner.rows[0].company_name, title, description, requirements, location, employment_type, finalCover]
     );
 
@@ -157,8 +157,8 @@ exports.postAnnouncement = async (req, res) => {
       const schools = await db.query('SELECT id FROM schools');
       for (let school of schools.rows) {
         const result = await db.query(
-          `INSERT INTO industry_announcements (industry_email, target_school_id, title, description, type, cover_photo) 
-           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          `INSERT INTO industry_announcements (industry_email, target_school_id, title, description, type, cover_photo, status) 
+           VALUES ($1, $2, $3, $4, $5, $6, 'Pending') RETURNING *`,
           [cleanEmail, school.id, title, description, type, finalCover]
         );
         insertedRecords.push(result.rows[0]);
@@ -166,8 +166,8 @@ exports.postAnnouncement = async (req, res) => {
     } else {
       // Specific school
       const result = await db.query(
-        `INSERT INTO industry_announcements (industry_email, target_school_id, title, description, type, cover_photo) 
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        `INSERT INTO industry_announcements (industry_email, target_school_id, title, description, type, cover_photo, status) 
+         VALUES ($1, $2, $3, $4, $5, $6, 'Pending') RETURNING *`,
         [cleanEmail, target_school_id, title, description, type, finalCover]
       );
       insertedRecords.push(result.rows[0]);
@@ -206,4 +206,76 @@ exports.getJobApplicants = async (req, res) => {
     res.json(result.rows);
   } catch (error) { res.status(500).json({ error: "Failed to fetch applicants." }); }
 };
+
+exports.updateJob = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { title, description, requirements, location, employment_type, cover_photo } = req.body;
+    
+    const result = await db.query(
+      `UPDATE internships 
+       SET title = $1, description = $2, requirements = $3, location = $4, employment_type = $5, cover_photo = $6, status = 'Pending'
+       WHERE id = $7 RETURNING *`,
+      [title, description, requirements, location, employment_type, cover_photo || null, jobId]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "Job not found." });
+    res.json({ message: "Job updated successfully! Pending admin approval.", job: result.rows[0] });
+  } catch (error) {
+    console.error("Update Job Error:", error.message);
+    res.status(500).json({ error: "Failed to update job." });
+  }
+};
+
+exports.deleteJob = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    
+    // Delete job applications first to satisfy foreign key constraint
+    await db.query("DELETE FROM job_applications WHERE job_id = $1", [jobId]);
+    
+    // Delete internship post
+    const result = await db.query("DELETE FROM internships WHERE id = $1 RETURNING *", [jobId]);
+    
+    if (result.rows.length === 0) return res.status(404).json({ error: "Job not found." });
+    res.json({ message: "Job deleted successfully." });
+  } catch (error) {
+    console.error("Delete Job Error:", error.message);
+    res.status(500).json({ error: "Failed to delete job." });
+  }
+};
+
+exports.updateAnnouncement = async (req, res) => {
+  try {
+    const { annId } = req.params;
+    const { title, description, type, cover_photo, target_school_id } = req.body;
+
+    const result = await db.query(
+      `UPDATE industry_announcements 
+       SET title = $1, description = $2, type = $3, cover_photo = $4, target_school_id = $5, status = 'Pending'
+       WHERE id = $6 RETURNING *`,
+      [title, description, type, cover_photo || null, target_school_id, annId]
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: "Announcement not found." });
+    res.json({ message: "Announcement updated successfully! Pending admin approval.", announcement: result.rows[0] });
+  } catch (error) {
+    console.error("Update Announcement Error:", error.message);
+    res.status(500).json({ error: "Failed to update announcement." });
+  }
+};
+
+exports.deleteAnnouncement = async (req, res) => {
+  try {
+    const { annId } = req.params;
+    const result = await db.query("DELETE FROM industry_announcements WHERE id = $1 RETURNING *", [annId]);
+    
+    if (result.rows.length === 0) return res.status(404).json({ error: "Announcement not found." });
+    res.json({ message: "Announcement deleted successfully." });
+  } catch (error) {
+    console.error("Delete Announcement Error:", error.message);
+    res.status(500).json({ error: "Failed to delete announcement." });
+  }
+};
+
 

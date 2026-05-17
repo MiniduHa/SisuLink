@@ -43,6 +43,8 @@ export default function ManageJobs() {
   const [isApplicantsModalOpen, setIsApplicantsModalOpen] = useState(false);
   const [isFetchingApplicants, setIsFetchingApplicants] = useState(false);
   const [isPhotoUploading, setIsPhotoUploading] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingJobId, setEditingJobId] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -176,32 +178,92 @@ export default function ManageJobs() {
     }
 
     try {
-      const response = await fetch(`http://172.20.10.7:5000/api/industry/${email}/jobs`, {
-        method: 'POST',
+      const url = isEditMode 
+        ? `http://172.20.10.7:5000/api/industry/jobs/${editingJobId}`
+        : `http://172.20.10.7:5000/api/industry/${email}/jobs`;
+      const method = isEditMode ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
 
       if (response.ok) {
-        Alert.alert("Success", "Job posted successfully!");
+        Alert.alert("Success", isEditMode ? "Job updated successfully! Pending admin approval." : "Job posted successfully!");
         setIsModalOpen(false);
         setFormData({ title: '', description: '', requirements: '', location: '', employment_type: 'Full-time', cover_photo: '' });
+        setIsEditMode(false);
+        setEditingJobId(null);
         fetchJobs();
       } else {
         const errorData = await response.json();
-        Alert.alert("Error", errorData.error || "Failed to post job.");
+        Alert.alert("Error", errorData.error || "Failed to submit job.");
       }
     } catch (error) {
-      console.error("Post job error:", error);
+      console.error("Submit job error:", error);
       Alert.alert("Error", "Network error.");
     }
+  };
+
+  const handleEditPress = (job: any) => {
+    setFormData({
+      title: job.title || '',
+      description: job.description || '',
+      requirements: job.requirements || '',
+      location: job.location || '',
+      employment_type: job.employment_type || 'Full-time',
+      cover_photo: job.cover_photo || ''
+    });
+    setEditingJobId(job.id);
+    setIsEditMode(true);
+    setIsModalOpen(true);
+  };
+
+  const handleDeletePress = (jobId: number) => {
+    Alert.alert(
+      "Confirm Delete",
+      "Are you sure you want to delete this job post? This will also remove any job applications for this post.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const response = await fetch(`http://172.20.10.7:5000/api/industry/jobs/${jobId}`, {
+                method: 'DELETE'
+              });
+              if (response.ok) {
+                Alert.alert("Deleted", "Job post deleted successfully.");
+                fetchJobs();
+              } else {
+                const errorData = await response.json();
+                Alert.alert("Error", errorData.error || "Failed to delete job.");
+              }
+            } catch (error) {
+              console.error("Delete job error:", error);
+              Alert.alert("Error", "Network error.");
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Job Management</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setIsModalOpen(true)}>
+        <TouchableOpacity 
+          style={styles.addBtn} 
+          onPress={() => {
+            setIsEditMode(false);
+            setEditingJobId(null);
+            setFormData({ title: '', description: '', requirements: '', location: '', employment_type: 'Full-time', cover_photo: '' });
+            setIsModalOpen(true);
+          }}
+        >
           <Feather name="plus" size={24} color="#FFF" />
         </TouchableOpacity>
       </View>
@@ -217,19 +279,23 @@ export default function ManageJobs() {
             </View>
             <Text style={styles.emptyTitle}>No job posts still</Text>
             <Text style={styles.emptySubtitle}>You haven't posted any internships yet. Your active opportunities will appear here once you create them.</Text>
-            <TouchableOpacity style={styles.createFirstBtn} onPress={() => setIsModalOpen(true)}>
+            <TouchableOpacity 
+              style={styles.createFirstBtn} 
+              onPress={() => {
+                setIsEditMode(false);
+                setEditingJobId(null);
+                setFormData({ title: '', description: '', requirements: '', location: '', employment_type: 'Full-time', cover_photo: '' });
+                setIsModalOpen(true);
+              }}
+            >
               <Text style={styles.createFirstBtnText}>Post Your First Job</Text>
             </TouchableOpacity>
           </View>
         ) : (
           jobs.map(job => (
-            <TouchableOpacity 
+            <View 
               key={job.id} 
               style={styles.jobCard}
-              onPress={() => {
-                setSelectedJob(job);
-                fetchApplicants(job.id);
-              }}
             >
               <View style={styles.jobHeader}>
                 <Text style={styles.jobTitle}>{job.title}</Text>
@@ -247,12 +313,32 @@ export default function ManageJobs() {
               </View>
               <View style={styles.jobFooter}>
                 <Text style={styles.jobDate}>Posted {new Date(job.created_at).toLocaleDateString()}</Text>
-                <View style={styles.applicantLink}>
-                  <Text style={styles.applicantLinkText}>View Applicants</Text>
-                  <Feather name="chevron-right" size={14} color="#2563EB" />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TouchableOpacity 
+                    onPress={() => handleEditPress(job)} 
+                    style={{ padding: 6, backgroundColor: '#EFF6FF', borderRadius: 8 }}
+                  >
+                    <Feather name="edit-2" size={14} color="#2563EB" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={() => handleDeletePress(job.id)} 
+                    style={{ padding: 6, backgroundColor: '#FEF2F2', borderRadius: 8 }}
+                  >
+                    <Feather name="trash-2" size={14} color="#EF4444" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.applicantLink, { backgroundColor: '#F8FAFC', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }]}
+                    onPress={() => {
+                      setSelectedJob(job);
+                      fetchApplicants(job.id);
+                    }}
+                  >
+                    <Text style={styles.applicantLinkText}>Applicants</Text>
+                    <Feather name="chevron-right" size={12} color="#2563EB" />
+                  </TouchableOpacity>
                 </View>
               </View>
-            </TouchableOpacity>
+            </View>
           ))
         )}
       </ScrollView>
@@ -316,9 +402,9 @@ export default function ManageJobs() {
               <TouchableOpacity onPress={() => setIsModalOpen(false)}>
                 <Feather name="x" size={24} color="#1E293B" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Post New Job</Text>
+              <Text style={styles.modalTitle}>{isEditMode ? "Edit Job Post" : "Post New Job"}</Text>
               <TouchableOpacity onPress={handlePostJob}>
-                <Text style={styles.postBtnText}>Post</Text>
+                <Text style={styles.postBtnText}>{isEditMode ? "Save" : "Post"}</Text>
               </TouchableOpacity>
             </View>
 

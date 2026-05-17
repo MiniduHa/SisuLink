@@ -2,6 +2,30 @@ const db = require('../config/db');
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
+const matchesSubject = (sub1, sub2) => {
+  if (!sub1 || !sub2) return false;
+  const s1 = sub1.toLowerCase().trim();
+  const s2 = sub2.toLowerCase().trim();
+  if (s1 === s2) return true;
+  
+  // Subject alias mapping
+  const aliases = {
+    'ict': ['information technology', 'ict', 'git'],
+    'information technology': ['ict', 'git', 'information technology'],
+    'git': ['ict', 'information technology', 'git'],
+    'general english': ['english', 'general english'],
+    'english': ['general english', 'english'],
+    'combined mathematics': ['mathematics', 'combined mathematics', 'combined maths', 'maths'],
+    'maths': ['mathematics', 'combined mathematics', 'combined maths', 'maths'],
+    'mathematics': ['mathematics', 'combined mathematics', 'combined maths', 'maths'],
+    'physics': ['physics']
+  };
+  
+  if (aliases[s1] && aliases[s1].includes(s2)) return true;
+  if (aliases[s2] && aliases[s2].includes(s1)) return true;
+  return false;
+};
+
 exports.getDashboard = async (req, res) => {
   try {
     const { email } = req.params;
@@ -38,9 +62,9 @@ exports.getDashboard = async (req, res) => {
       `SELECT ct.id, ct.subject, ct.time_slot, c.grade, c.section, c.room_number 
        FROM class_timetables ct 
        JOIN classes c ON ct.class_id = c.id 
-       WHERE ct.teacher_id = $1 AND ct.day_of_week = $2
+       WHERE ct.teacher_id = $1 AND ct.day_of_week = $2 AND ct.subject = $3
        ORDER BY ct.time_slot ASC`,
-      [teacherDbId, todayName]
+      [teacherDbId, todayName, teacher.subject]
     );
 
     const todaysClasses = timetableRes.rows.map((cls, index) => {
@@ -213,7 +237,16 @@ exports.getEvents = async (req, res) => {
     }
 
     if (userRes.rows.length === 0) {
-      userRes = await db.query('SELECT school_id FROM parents WHERE email = $1', [cleanEmail]);
+      userRes = await db.query('SELECT school_id, child_student_ids FROM parents WHERE email = $1', [cleanEmail]);
+      if (userRes.rows.length > 0 && !userRes.rows[0].school_id) {
+        const parent = userRes.rows[0];
+        if (parent.child_student_ids && parent.child_student_ids.length > 0) {
+          const childRes = await db.query('SELECT school_id FROM students WHERE index_number = ANY($1) AND school_id IS NOT NULL LIMIT 1', [parent.child_student_ids]);
+          if (childRes.rows.length > 0) {
+            userRes.rows[0].school_id = childRes.rows[0].school_id;
+          }
+        }
+      }
     }
 
     if (userRes.rows.length === 0) return res.status(404).json({ error: "User not found" });
@@ -238,17 +271,18 @@ exports.getTimetable = async (req, res) => {
     const { email } = req.params;
     const cleanEmail = email.toLowerCase().trim();
 
-    const teacherRes = await db.query('SELECT id FROM teachers WHERE email = $1', [cleanEmail]);
+    const teacherRes = await db.query('SELECT id, subject FROM teachers WHERE email = $1', [cleanEmail]);
     if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
-    const teacherDbId = teacherRes.rows[0].id;
+    const teacher = teacherRes.rows[0];
+    const teacherDbId = teacher.id;
 
     const result = await db.query(
       `SELECT ct.day_of_week, ct.period_number, ct.time_slot, ct.subject, c.grade, c.section, c.room_number 
        FROM class_timetables ct 
        JOIN classes c ON ct.class_id = c.id 
-       WHERE ct.teacher_id = $1
+       WHERE ct.teacher_id = $1 AND ct.subject = $2
        ORDER BY ct.time_slot ASC`,
-      [teacherDbId]
+      [teacherDbId, teacher.subject]
     );
 
     res.json(result.rows);
@@ -350,7 +384,19 @@ exports.getProfile = async (req, res) => {
     );
 
     if (result.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
-    res.json(result.rows[0]);
+    const teacher = result.rows[0];
+
+    // FETCH DISTINCT GRADES TAUGHT BY THIS TEACHER
+    const gradesRes = await db.query(
+      `SELECT DISTINCT c.grade 
+       FROM class_timetables ct 
+       JOIN classes c ON ct.class_id = c.id 
+       WHERE ct.teacher_id = $1 AND ct.subject = $2`,
+      [teacher.id, teacher.subject]
+    );
+    teacher.teaching_grades = gradesRes.rows.map(row => row.grade);
+
+    res.json(teacher);
   } catch (error) {
     console.error("Teacher Profile Error:", error);
     res.status(500).json({ error: "Server error fetching teacher profile." });
@@ -464,12 +510,13 @@ exports.getContacts = async (req, res) => {
     const { email } = req.params;
     const cleanEmail = email.toLowerCase().trim();
 
-    // 1. Get the teacher's ID
-    const teacherRes = await db.query('SELECT id FROM teachers WHERE email = $1', [cleanEmail]);
+    // 1. Get the teacher's ID and Subject
+    const teacherRes = await db.query('SELECT id, subject FROM teachers WHERE email = $1', [cleanEmail]);
     if (teacherRes.rows.length === 0) return res.status(404).json({ error: "Teacher not found" });
     const teacherId = teacherRes.rows[0].id;
+    const teacherSubject = teacherRes.rows[0].subject;
 
-    // 2. Get students taught by this teacher (via timetables OR managed class)
+    // 2. Get students taught by this teacher (via timetables matching designated subject OR managed class)
     const studentsRes = await db.query(
       `SELECT DISTINCT 
         s.first_name || ' ' || s.last_name as name, 
@@ -479,9 +526,17 @@ exports.getContacts = async (req, res) => {
         s.index_number
        FROM students s
        LEFT JOIN classes c_managed ON s.grade_level = c_managed.grade AND s.section = c_managed.section
-       LEFT JOIN class_timetables ct ON ct.class_id = (SELECT id FROM classes WHERE grade = s.grade_level AND section = s.section)
-       WHERE ct.teacher_id = $1 OR c_managed.class_teacher_id = $1`,
-      [teacherId]
+       WHERE c_managed.class_teacher_id = $1
+       OR EXISTS (
+         SELECT 1 FROM class_timetables ct
+         JOIN classes c ON ct.class_id = c.id
+         WHERE ct.teacher_id = $1 
+         AND ct.subject = $2 
+         AND s.grade_level = c.grade 
+         AND s.section = c.section
+       )
+       ORDER BY name`,
+      [teacherId, teacherSubject]
     );
 
     // 3. Get parents of THESE specific students
@@ -496,7 +551,8 @@ exports.getContacts = async (req, res) => {
            WHERE EXISTS (
              SELECT 1 FROM unnest(p.child_student_ids) as cid 
              WHERE cid = ANY($1)
-           )`,
+           )
+           ORDER BY name`,
           [studentIndices]
         );
         parents = parentsRes.rows;
@@ -536,7 +592,7 @@ exports.getAttendanceHistory = async (req, res) => {
 
     const historyRes = await db.query(
       `SELECT 
-        sa.date, 
+        TO_CHAR(sa.date, 'YYYY-MM-DD') as date, 
         COUNT(CASE WHEN sa.status = 'Present' THEN 1 END) as present_count,
         COUNT(CASE WHEN sa.status = 'Absent' THEN 1 END) as absent_count
        FROM student_attendance sa
@@ -581,7 +637,7 @@ exports.getAttendanceMonthlyReport = async (req, res) => {
     const endDate = endD.getFullYear() + '-' + String(endD.getMonth() + 1).padStart(2, '0') + '-' + String(endD.getDate()).padStart(2, '0');
 
     const attendanceRes = await db.query(
-      `SELECT sa.student_id, sa.date, sa.status
+      `SELECT sa.student_id, TO_CHAR(sa.date, 'YYYY-MM-DD') as date, sa.status
        FROM student_attendance sa
        JOIN students s ON sa.student_id = s.id
        WHERE s.grade_level = $1 AND s.section = $2 
@@ -592,8 +648,7 @@ exports.getAttendanceMonthlyReport = async (req, res) => {
     // 4. Format into a matrix
     const attendanceMap = {};
     attendanceRes.rows.forEach(row => {
-      const d = new Date(row.date);
-      const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const dateStr = row.date;
       if (!attendanceMap[row.student_id]) attendanceMap[row.student_id] = {};
       attendanceMap[row.student_id][dateStr] = row.status;
     });
@@ -706,26 +761,37 @@ exports.getAssignments = async (req, res) => {
     const teacherId = teacher.id;
     const teacherSubject = teacher.subject;
 
-    // 1. Get assignments from timetable
+    // 1. Get assignments from timetable (classes where this teacher has lessons)
     const timetableRes = await db.query(
-      `SELECT DISTINCT c.grade, c.section, ct.subject
+      `SELECT DISTINCT c.grade, c.section
        FROM class_timetables ct
        JOIN classes c ON ct.class_id = c.id
-       WHERE ct.teacher_id = $1
-       ORDER BY c.grade, c.section, ct.subject`,
+       WHERE ct.teacher_id = $1`,
        [teacherId]
     );
 
+    const timetableAssignments = timetableRes.rows.map(row => ({
+      grade: row.grade,
+      section: row.section,
+      subject: teacherSubject
+    }));
+
     // 2. Get from managed class (if they are a class teacher)
     const managedClassRes = await db.query(
-      `SELECT grade, section, $1 as subject 
+      `SELECT grade, section 
        FROM classes 
-       WHERE class_teacher_id = $2`,
-       [teacherSubject, teacherId]
+       WHERE class_teacher_id = $1`,
+       [teacherId]
     );
 
+    const managedClassAssignments = managedClassRes.rows.map(row => ({
+      grade: row.grade,
+      section: row.section,
+      subject: teacherSubject
+    }));
+
     // Combine results and ensure uniqueness
-    const combined = [...timetableRes.rows, ...managedClassRes.rows];
+    const combined = [...timetableAssignments, ...managedClassAssignments];
     const uniqueAssignments = Array.from(new Set(combined.map(a => JSON.stringify({
       grade: a.grade,
       section: a.section,
@@ -743,15 +809,21 @@ exports.getClassMarks = async (req, res) => {
   try {
     const { grade, section, subject, term } = req.query;
     
-    // 1. Fetch students in that class who study the selected subject (or if subjects array is empty/null, assume all study it)
+    // 1. Fetch students in that class
     const studentsRes = await db.query(
-      `SELECT id, first_name, last_name, index_number, profile_photo_url 
+      `SELECT id, first_name, last_name, index_number, profile_photo_url, subjects
        FROM students 
        WHERE grade_level = $1 AND section = $2 
-       AND (subjects IS NULL OR jsonb_array_length(subjects) = 0 OR subjects ? $3)
        ORDER BY first_name ASC`,
-      [grade, section, subject]
+      [grade, section]
     );
+
+    // Filter students so that we only keep those enrolled in the selected subject
+    const filteredStudents = studentsRes.rows.filter(student => {
+      const studentSubjects = student.subjects || [];
+      if (studentSubjects.length === 0) return true; // fallback if subjects array is empty/null, assume they study all subjects
+      return studentSubjects.some(subName => matchesSubject(subName, subject));
+    });
 
     // 2. Fetch existing marks for these students for the given subject and term
     const existingMarksRes = await db.query(
@@ -769,7 +841,7 @@ exports.getClassMarks = async (req, res) => {
     });
 
     res.json({
-      students: studentsRes.rows,
+      students: filteredStudents,
       marks: marksMap
     });
 
